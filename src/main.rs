@@ -36,29 +36,13 @@ pub enum Message {
     OpenWindow, 
 }
 
-pub enum Screen {
-
-}
-
-// #[derive(Debug, Clone)]
-// pub enum WindowType {
-//     MainWindow,
-//     CompanyForm,
-// }
-
 pub struct Window {
-    title: String,
 }
 
 impl Window {
     fn new() -> Self {
         Self {
-            title: "New Window".to_string(), // TODO
         }
-    }
-
-    fn view(&self, id: window::Id) -> Element<Message> {
-        text("Hello world").into()
     }
 }
 
@@ -174,7 +158,7 @@ impl JobHunter {
                                 .spacing(5)
                                 .align_y(Alignment::Center)
                             )
-                            .on_press(Message::OpenWindow) // TODO
+                            // .on_press() // TODO
                         )
                         .width(Fill)
                         .align_x(Alignment::End)
