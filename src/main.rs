@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 use iced::{Alignment, color, Element, Fill, Length, Padding, Subscription, Task, Theme, Vector, window};
-use iced::widget::{button, Column, column, container, horizontal_space, row, scrollable, text, text_input};
+use iced::event::Event;
+use iced::keyboard;
+use iced::keyboard::key;
+use iced::widget::{button, center, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
@@ -17,13 +20,12 @@ pub fn main() -> iced::Result {
         .run_with(JobHunter::new)
 }
 
-/***** Application *****/
-
 pub struct JobHunter {
     companies: Vec<Company>,
     db: Connection,
     windows: BTreeMap<window::Id, Window>,
     main_window: window::Id,
+    modal: Modal,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +36,9 @@ pub enum Message {
     WindowOpened(window::Id), 
     WindowClosed(window::Id),
     OpenWindow, 
+    ShowCreateCompanyModal,
+    HideModal,
+    Event(Event),
 }
 
 pub struct Window {
@@ -50,6 +55,39 @@ pub fn ellipsis_button(message: Message, color: iced::Color) -> iced::widget::Bu
     button(fa_icon_solid("ellipsis").color(color).size(15.0)).on_press(message)
 }
 
+pub enum Modal {
+    None,
+    CreateCompanyModal,
+    EditCompanyModal,
+}
+
+// https://github.com/iced-rs/iced/blob/latest/examples/modal/src/main.rs
+fn modal<'a, Message>(
+    base: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    on_blur: Message,
+) -> Element<'a, Message> where Message: Clone + 'a, {
+    stack![
+        base.into(),
+        opaque(
+            mouse_area(center(opaque(content)).style(|_theme| {
+                container::Style {
+                    background: Some(
+                        iced::Color {
+                            a: 0.8,
+                            ..iced::Color::BLACK
+                        }
+                        .into(),
+                    ),
+                    ..container::Style::default()
+                }
+            }))
+            .on_press(on_blur)
+        )
+    ]
+    .into()
+}
+
 impl JobHunter {
     fn new() -> (Self, Task<Message>) {
         let mut conn = data::connect();
@@ -63,6 +101,7 @@ impl JobHunter {
             db: conn,
             windows: BTreeMap::new(),
             main_window: id,
+            modal: Modal::None,
             },
             open.map(Message::WindowOpened)
         )
@@ -77,7 +116,14 @@ impl JobHunter {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        window::close_events().map(Message::WindowClosed)
+        Subscription::batch(vec![
+            window::close_events().map(Message::WindowClosed),
+            iced::event::listen().map(Message::Event),
+        ])
+    }
+
+    fn hide_modal(&mut self) {
+        self.modal = Modal::None;
     }
     
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -124,6 +170,7 @@ impl JobHunter {
             Message::TrackNewCompany => {
                 let _ = Company::create(&self.db, "Acme".to_string(), "".to_string());
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
+                self.hide_modal();
                 Task::none()
             }
             Message::ToggleCompanyMenu => {
@@ -135,6 +182,35 @@ impl JobHunter {
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
                 Task::none()
             }
+            Message::ShowCreateCompanyModal => {
+                self.modal = Modal::CreateCompanyModal;
+                focus_next()
+            }
+            Message::HideModal => {
+                self.hide_modal();
+                Task::none()
+            }
+            Message::Event(event) => match event {
+                Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Tab), 
+                    modifiers,
+                    ..
+                }) => {
+                    if modifiers.shift() {
+                        focus_previous()
+                    } else {
+                        focus_next()
+                    }
+                }
+                Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Escape),
+                    ..
+                }) => {
+                    self.hide_modal();
+                    Task::none()
+                }
+                _ => {
+                    Task::none()
+                }
+            }
             _ => {
                 println!("WARNING: undefined Message");
                 Task::none()
@@ -143,7 +219,7 @@ impl JobHunter {
     }
     
     fn view(&self, id: window::Id) -> Element<Message> {
-        row![
+        let main_window_content = row![
             // Sidemenu container
             container(
                 column![
@@ -152,13 +228,13 @@ impl JobHunter {
                         container(
                             button(
                                 row![
-                                    text("Track New"),
+                                    text("New"),
                                     fa_icon_solid("plus").size(15.0).color(color!(255, 255, 255)),
                                 ]
                                 .spacing(5)
                                 .align_y(Alignment::Center)
                             )
-                            // .on_press() // TODO
+                            .on_press(Message::ShowCreateCompanyModal)
                         )
                         .width(Fill)
                         .align_x(Alignment::End)
@@ -221,8 +297,47 @@ impl JobHunter {
                 background: Some(iced::Background::from(iced::Color::BLACK)),
                 ..Default::default()
             })
-        ]
-        .into()
+        ];
+
+        match self.modal {
+            Modal::CreateCompanyModal => {
+                let create_company_content = container(
+                    column![
+                        text("Track Company").size(24),
+                        column![
+                            column![
+                                text("Name").size(12),
+                                text_input("", "") // TODO
+                                    .on_submit(Message::TrackNewCompany)
+                                    .padding(5)
+                            ]
+                            .spacing(5),
+                            column![
+                                text("Career Page Base URL").size(12),
+                                text_input("", "") // TODO
+                                    .on_submit(Message::TrackNewCompany)
+                                    .padding(5)
+                            ]
+                            .spacing(5),
+                            button(text("Save")).on_press(Message::TrackNewCompany),
+                        ]
+                        .spacing(10),
+                    ]
+                    .spacing(20)
+                )
+                .width(300)
+                .padding(10)
+                .style(container::rounded_box);
+
+                modal(main_window_content, create_company_content, Message::HideModal)
+            }
+            Modal::EditCompanyModal => {
+                main_window_content.into() // TODO
+            }
+            Modal::None => {
+                main_window_content.into()
+            }
+        }
     }
     
 }
