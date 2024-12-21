@@ -18,7 +18,7 @@ pub fn migrate(conn: &mut Connection) {
 pub struct Company {
     pub id: i32,
     pub name: String,
-    pub career_page_base_url: String,
+    pub careers_page_base_url: String,
 }
 
 impl Company {
@@ -28,15 +28,15 @@ impl Company {
             Ok(Company {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                career_page_base_url: row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "".to_string()),
+                careers_page_base_url: row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "".to_string()),
             })
         })?
         .collect()
     }
 
-    pub fn create(conn: &Connection, name: String, career_page_base_url: String) -> rusqlite::Result<()> {
-        let sql = "INSERT INTO company (name, career_page_base_url) VALUES (?, ?)";
-        conn.execute(sql, [name, career_page_base_url])?;
+    pub fn create(conn: &Connection, name: String, careers_page_base_url: String) -> rusqlite::Result<()> {
+        let sql = "INSERT INTO company (name, careers_page_base_url) VALUES (?, ?)";
+        conn.execute(sql, [name, careers_page_base_url])?;
         Ok(())
     }
 

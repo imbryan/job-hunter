@@ -26,6 +26,7 @@ pub struct JobHunter {
     windows: BTreeMap<window::Id, Window>,
     main_window: window::Id,
     modal: Modal,
+    company_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +40,7 @@ pub enum Message {
     ShowCreateCompanyModal,
     HideModal,
     Event(Event),
+    CompanyName(String),
 }
 
 pub struct Window {
@@ -102,6 +104,7 @@ impl JobHunter {
             windows: BTreeMap::new(),
             main_window: id,
             modal: Modal::None,
+            company_name: "".to_string(),
             },
             open.map(Message::WindowOpened)
         )
@@ -124,6 +127,7 @@ impl JobHunter {
 
     fn hide_modal(&mut self) {
         self.modal = Modal::None;
+        self.company_name = "".to_string(); // hmm...
     }
     
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -168,7 +172,10 @@ impl JobHunter {
                 }
             }
             Message::TrackNewCompany => {
-                let _ = Company::create(&self.db, "Acme".to_string(), "".to_string());
+                if self.company_name == "" { // hmm...
+                    return Task::none()
+                }
+                let _ = Company::create(&self.db, self.company_name.clone(), "".to_string());
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
                 self.hide_modal();
                 Task::none()
@@ -188,6 +195,10 @@ impl JobHunter {
             }
             Message::HideModal => {
                 self.hide_modal();
+                Task::none()
+            }
+            Message::CompanyName(name) => {
+                self.company_name = name; // hmm...
                 Task::none()
             }
             Message::Event(event) => match event {
@@ -306,14 +317,15 @@ impl JobHunter {
                         text("Track Company").size(24),
                         column![
                             column![
-                                text("Name").size(12),
-                                text_input("", "") // TODO
+                                text("Company Name").size(12),
+                                text_input("", &self.company_name) // hmm...
+                                    .on_input(Message::CompanyName)
                                     .on_submit(Message::TrackNewCompany)
                                     .padding(5)
                             ]
                             .spacing(5),
                             column![
-                                text("Career Page Base URL").size(12),
+                                text("Company's Careers Page URL").size(12),
                                 text_input("", "") // TODO
                                     .on_submit(Message::TrackNewCompany)
                                     .padding(5)
