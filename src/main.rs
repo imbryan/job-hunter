@@ -8,6 +8,7 @@ use iced::event::Event;
 use iced::keyboard;
 use iced::keyboard::key;
 use iced::widget::{button, center, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
+use iced_aw::{drop_down, DropDown};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
@@ -28,6 +29,7 @@ pub struct JobHunter {
     modal: Modal,
     company_name: String,
     careers_url: String,
+    company_dropdowns: BTreeMap<i32, bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +45,8 @@ pub enum Message {
     Event(Event),
     CompanyNameChanged(String),
     CareersURLChanged(String),
+    ToggleCompanyDropdown(i32),
+    DismissCompanyDropdown(i32),
 }
 
 pub struct Window {
@@ -55,8 +59,8 @@ impl Window {
     }
 }
 
-pub fn ellipsis_button(message: Message, color: iced::Color) -> iced::widget::Button<'static, Message> {
-    button(fa_icon_solid("ellipsis").color(color).size(15.0)).on_press(message)
+pub fn ellipsis_button(color: iced::Color) -> iced::widget::Button<'static, Message> {
+    button(fa_icon_solid("ellipsis").color(color).size(15.0))
 }
 
 pub enum Modal {
@@ -108,6 +112,7 @@ impl JobHunter {
             modal: Modal::None,
             company_name: "".to_string(),
             careers_url: "".to_string(),
+            company_dropdowns: BTreeMap::new(),
             },
             open.map(Message::WindowOpened)
         )
@@ -209,6 +214,18 @@ impl JobHunter {
                 self.careers_url = careers_url;
                 Task::none()
             }
+            Message::ToggleCompanyDropdown(id) => {
+                let current_val = match self.company_dropdowns.get(&id) {
+                    Some(&status) => status,
+                    None => false
+                };
+                self.company_dropdowns.insert(id, !current_val);
+                Task::none()
+            }
+            Message::DismissCompanyDropdown(id) => {
+                self.company_dropdowns.insert(id, false);
+                Task::none()
+            }
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Tab), 
                     modifiers,
@@ -267,13 +284,33 @@ impl JobHunter {
                             self.companies
                                 .iter()
                                 .map(|company| {
+                                    let company_id = company.id;
+                                    let underlay = ellipsis_button(color!(255,255,255)).on_press(Message::ToggleCompanyDropdown(company_id));
+                                    let dropdown = DropDown::new(
+                                        underlay,
+                                        column(vec![
+                                            button(text("Edit"))
+                                                .into(),
+                                            button(text("Delete"))
+                                                .on_press(Message::DeleteCompany(company_id))
+                                                .into(),
+                                        ])
+                                        .spacing(5),
+                                        match self.company_dropdowns.get(&company_id) {
+                                            Some(&status) => status,
+                                            None => false,
+                                        }
+                                    )
+                                    .width(Fill)
+                                    .alignment(drop_down::Alignment::Bottom)
+                                    .on_dismiss(Message::DismissCompanyDropdown(company_id));
+
                                     row![
                                         text(&company.name),
-                                        container(
-                                            ellipsis_button(Message::DeleteCompany(company.id), color!(255,255,255)) // TODO this needs to open menu and not just delete
-                                        )
+                                        container(dropdown)
                                         .width(Fill)
-                                        .align_x(Alignment::End)
+                                        .align_x(Alignment::End),
+                                        
                                     ]
                                     .align_y(Alignment::Center)
                                     .padding(Padding::from([5, 30]))
