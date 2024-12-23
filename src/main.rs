@@ -27,6 +27,7 @@ pub struct JobHunter {
     main_window: window::Id,
     modal: Modal,
     company_name: String,
+    careers_url: String,
 }
 
 #[derive(Debug, Clone)]
@@ -40,7 +41,8 @@ pub enum Message {
     ShowCreateCompanyModal,
     HideModal,
     Event(Event),
-    CompanyName(String),
+    CompanyNameChanged(String),
+    CareersURLChanged(String),
 }
 
 pub struct Window {
@@ -105,6 +107,7 @@ impl JobHunter {
             main_window: id,
             modal: Modal::None,
             company_name: "".to_string(),
+            careers_url: "".to_string(),
             },
             open.map(Message::WindowOpened)
         )
@@ -128,6 +131,7 @@ impl JobHunter {
     fn hide_modal(&mut self) {
         self.modal = Modal::None;
         self.company_name = "".to_string(); // hmm...
+        self.careers_url = "".to_string();
     }
     
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -172,10 +176,10 @@ impl JobHunter {
                 }
             }
             Message::TrackNewCompany => {
-                if self.company_name == "" { // hmm...
-                    return Task::none()
+                if self.company_name == "" || self.careers_url == "" { // hmm...
+                    return Task::none() // TODO ideally there would be visual feedback
                 }
-                let _ = Company::create(&self.db, self.company_name.clone(), "".to_string());
+                let _ = Company::create(&self.db, self.company_name.clone(), self.careers_url.clone());
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
                 self.hide_modal();
                 Task::none()
@@ -197,8 +201,12 @@ impl JobHunter {
                 self.hide_modal();
                 Task::none()
             }
-            Message::CompanyName(name) => {
+            Message::CompanyNameChanged(name) => {
                 self.company_name = name; // hmm...
+                Task::none()
+            }
+            Message::CareersURLChanged(careers_url) => {
+                self.careers_url = careers_url;
                 Task::none()
             }
             Message::Event(event) => match event {
@@ -319,19 +327,27 @@ impl JobHunter {
                             column![
                                 text("Company Name").size(12),
                                 text_input("", &self.company_name) // hmm...
-                                    .on_input(Message::CompanyName)
+                                    .on_input(Message::CompanyNameChanged)
                                     .on_submit(Message::TrackNewCompany)
                                     .padding(5)
                             ]
                             .spacing(5),
                             column![
                                 text("Company's Careers Page URL").size(12),
-                                text_input("", "") // TODO
+                                text_input("", &self.careers_url)
+                                    .on_input(Message::CareersURLChanged)
                                     .on_submit(Message::TrackNewCompany)
                                     .padding(5)
                             ]
                             .spacing(5),
-                            button(text("Save")).on_press(Message::TrackNewCompany),
+                            row![
+                                container(button(text("Save")).on_press(Message::TrackNewCompany))
+                                .width(Fill)
+                                .align_x(Alignment::End),
+                                button(text("Cancel")).on_press(Message::HideModal)
+                            ]
+                            .spacing(10)
+                            .width(Fill)
                         ]
                         .spacing(10),
                     ]
