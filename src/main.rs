@@ -403,7 +403,11 @@ impl JobHunter {
                 ]
             )
             .width(Length::FillPortion(1))
-            .height(Fill),
+            .height(Fill)
+            .style(|_| container::Style {
+                background: Some(iced::Background::from(color!(34,34,34))),
+                ..Default::default()
+            }),
             // Main content container
             container(
                 column![
@@ -422,7 +426,7 @@ impl JobHunter {
             .width(Length::FillPortion(3))
             .height(Fill)
             .style(|_| container::Style {
-                background: Some(iced::Background::from(iced::Color::BLACK)),
+                background: Some(iced::Background::from(color!(20,20,20))),
                 ..Default::default()
             })
         ];
