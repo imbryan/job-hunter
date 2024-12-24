@@ -1,3 +1,6 @@
+use std::fmt::Display;
+use std::str::FromStr;
+
 use chrono::{DateTime, Utc};
 use include_dir::{include_dir, Dir};
 use rusqlite::Connection;
@@ -79,12 +82,47 @@ pub struct JobPost {
     pub location: String,
     pub location_type: JobPostLocationType,
     pub url: String,
-    pub min_yoe: i32,
-    pub max_yoe: i32,
-    pub min_pay_cents: i64,
-    pub max_pay_cents: i64,
-    pub date_posted: DateTime<Utc>,
+    pub min_yoe: Option<i32>,
+    pub max_yoe: Option<i32>,
+    pub min_pay_cents: Option<i64>,
+    pub max_pay_cents: Option<i64>,
+    pub date_posted: Option<DateTime<Utc>>,
     pub date_retrieved: DateTime<Utc>,
+    pub job_title: String,
+}
+
+impl JobPost {
+    pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
+        let sql = "SELECT id, company_id, location, location_type, url,
+            min_yoe, max_yoe, min_pay_cents, max_pay_cents, 
+            date_posted, date_retrieved, job_title FROM job_post";
+        conn.prepare(sql)?
+            .query_map([], |row| {
+                let location_type_str: String = row.get(3)?;
+                let location_type = match JobPostLocationType::from_str(&location_type_str) {
+                    Ok(variant) => variant,
+                    Err(_) => panic!(),
+                };
+                let date_posted_timestamp = DateTime::from_timestamp(row.get(9)?, 0);
+                let date_retrieved_timestamp = DateTime::from_timestamp(row.get(10)?, 0).unwrap();
+
+                Ok(JobPost {
+                    id: row.get(0)?,
+                    company_id: row.get(1)?,
+                    location: row.get(2)?,
+                    location_type: location_type,
+                    url: row.get(4)?,
+                    min_yoe: row.get(5)?,
+                    max_yoe: row.get(6)?,
+                    min_pay_cents: row.get(7)?,
+                    max_pay_cents: row.get(8)?,
+                    date_posted: date_posted_timestamp,
+                    date_retrieved: date_retrieved_timestamp,
+                    job_title: row.get(11)?,
+                })
+            })?
+            .collect()
+    }
 }
 
 #[derive(Debug)]
@@ -92,6 +130,29 @@ pub enum JobPostLocationType {
     Onsite,
     Hybrid,
     Remote,
+}
+
+impl FromStr for JobPostLocationType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Onsite" => Ok(JobPostLocationType::Onsite),
+            "Hybrid" => Ok(JobPostLocationType::Hybrid),
+            "Remote" => Ok(JobPostLocationType::Remote),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Display for JobPostLocationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            JobPostLocationType::Onsite => write!(f, "On-site"),
+            JobPostLocationType::Hybrid => write!(f, "Hybrid"),
+            JobPostLocationType::Remote => write!(f, "Remote"),
+        }
+    }
 }
 
 #[derive(Debug)]

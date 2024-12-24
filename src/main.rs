@@ -12,7 +12,7 @@ use iced_aw::{drop_down, DropDown};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
-use self::data::{Company, migrate};
+use self::data::{Company, migrate, JobPost};
 
 pub fn main() -> iced::Result {
     iced::daemon(JobHunter::title, JobHunter::update, JobHunter::view)
@@ -31,6 +31,7 @@ pub struct JobHunter {
     careers_url: String,
     company_dropdowns: BTreeMap<i32, bool>,
     company_id: Option<i32>,
+    job_posts: Vec<JobPost>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +105,7 @@ impl JobHunter {
         migrate(&mut conn);
 
         let companies = Company::get_all(&conn).expect("Failed to get companies");
+        let jobs = JobPost::get_all(&conn).expect("Failed to get jobs");
         let (id, open) = window::open(window::Settings::default());
         (
             Self {
@@ -116,6 +118,7 @@ impl JobHunter {
             careers_url: "".to_string(),
             company_dropdowns: BTreeMap::new(),
             company_id: None,
+            job_posts: jobs,
             },
             open.map(Message::WindowOpened)
         )
@@ -411,17 +414,76 @@ impl JobHunter {
             // Main content container
             container(
                 column![
+                    // Search and filter area
                     text("Search and filter area")
                     .width(Fill)
                     .align_x(Alignment::Center),
+                    // Job list
                     scrollable(
-                        column![
-                            text("Main Content")
-                            .width(Fill)
-                            .align_x(Alignment::Center)
-                        ]
+                        Column::with_children(
+                            self.job_posts
+                                .iter()
+                                .map(|job_post| {
+                                    let company = Company::get(&self.db, job_post.company_id).unwrap();
+                                    let location_text = format!("{} ({})", &job_post.location, &job_post.location_type);
+                                    let posted_text = format!("Posted {}", &job_post.date_posted.unwrap().format("%m/%d/%Y"));
+
+                                    let min_yoe = &job_post.min_yoe.unwrap_or(-1);
+                                    let max_yoe = &job_post.max_yoe.unwrap_or(-1);
+                                    let yoe_text = match (*max_yoe > -1, *min_yoe > -1) {
+                                        (true, true) => format!("{}-{} years", min_yoe, max_yoe),
+                                        (false, true) => format!("{}+ years", min_yoe),
+                                        _ => "No required years found".to_string(),
+                                    };
+
+                                    let min_pay = &job_post.min_pay_cents.unwrap_or(-1);
+                                    let max_pay = &job_post.max_pay_cents.unwrap_or(-1);
+                                    let pay_text = match (*max_pay > -1, *min_pay > -1) {
+                                        (true, true) => format!("${} - ${}", min_pay, max_pay),
+                                        (false, true) => format!("${}", min_pay),
+                                        (true, false) => format!("${}", max_pay),
+                                        _ => "No salary information".to_string(),
+                                    };
+
+                                    container(
+                                        row![
+                                            column![
+                                                text(&job_post.job_title),
+                                                text(company.name),
+                                                text(location_text),
+                                                text(posted_text),
+                                            ]
+                                            .width(Length::FillPortion(1)),
+                                            column![
+                                                text(yoe_text),
+                                                text("Skills"),
+                                            ]
+                                            .width(Length::FillPortion(1)),
+                                            column![
+                                                text(pay_text),
+                                                text("Benefits"),
+                                            ]
+                                            .width(Length::FillPortion(1)),
+                                            column![
+                                                text("Application"),
+                                            ]
+                                            .width(Length::FillPortion(1)),
+                                        ]
+                                        .width(Fill)
+                                    )
+                                    .padding(Padding::from(10))
+                                    .style(|_| container::Style {
+                                        background: Some(iced::Background::from(color!(34,34,34))),
+                                        ..container::rounded_box(&self.theme(self.main_window))
+                                    })
+                                    .into()
+                                })
+                        )
+                            .spacing(15)
+                            .padding(Padding::from([20, 30]))
                     )
                 ]
+                .spacing(15)
             )
             .width(Length::FillPortion(3))
             .height(Fill)
