@@ -30,6 +30,7 @@ pub struct JobHunter {
     company_name: String,
     careers_url: String,
     company_dropdowns: BTreeMap<i32, bool>,
+    company_id: Option<i32>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +47,8 @@ pub enum Message {
     CompanyNameChanged(String),
     CareersURLChanged(String),
     ToggleCompanyDropdown(i32),
-    DismissCompanyDropdown(i32),
+    ShowEditCompanyModal(i32),
+    EditCompany,
 }
 
 pub struct Window {
@@ -113,6 +115,7 @@ impl JobHunter {
             company_name: "".to_string(),
             careers_url: "".to_string(),
             company_dropdowns: BTreeMap::new(),
+            company_id: None,
             },
             open.map(Message::WindowOpened)
         )
@@ -133,10 +136,51 @@ impl JobHunter {
         ])
     }
 
+    fn company_modal<'a>(&self, submit_message: Message) -> Element<'a, Message> {
+        container(
+            column![
+                text("Track Company").size(24),
+                column![
+                    column![
+                        text("Company Name").size(12),
+                        text_input("", &self.company_name) // hmm...
+                            .on_input(Message::CompanyNameChanged)
+                            .on_submit(submit_message.clone())
+                            .padding(5)
+                    ]
+                    .spacing(5),
+                    column![
+                        text("Company's Careers Page URL").size(12),
+                        text_input("", &self.careers_url)
+                            .on_input(Message::CareersURLChanged)
+                            .on_submit(submit_message.clone())
+                            .padding(5)
+                    ]
+                    .spacing(5),
+                    row![
+                        container(button(text("Save")).on_press(submit_message.clone()))
+                        .width(Fill)
+                        .align_x(Alignment::End),
+                        button(text("Cancel")).on_press(Message::HideModal)
+                    ]
+                    .spacing(10)
+                    .width(Fill)
+                ]
+                .spacing(10),
+            ]
+            .spacing(20)
+        )
+        .width(300)
+        .padding(10)
+        .style(container::rounded_box)
+        .into()
+    }
+
     fn hide_modal(&mut self) {
         self.modal = Modal::None;
         self.company_name = "".to_string(); // hmm...
         self.careers_url = "".to_string();
+        self.company_id = None;
     }
     
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -222,8 +266,35 @@ impl JobHunter {
                 self.company_dropdowns.insert(id, !current_val);
                 Task::none()
             }
-            Message::DismissCompanyDropdown(id) => {
+            Message::ShowEditCompanyModal(id) => {
+                let company = Company::get(&self.db, id).unwrap();
+                self.company_name = company.name;
+                self.careers_url = company.careers_url;
+                self.company_id = Some(id);
                 self.company_dropdowns.insert(id, false);
+                self.modal = Modal::EditCompanyModal;
+                focus_next()
+            }
+            Message::EditCompany => {
+                let company_id = match self.company_id {
+                    Some(id) => {
+                        id
+                    }
+                    None => {
+                        return Task::none()
+                    }
+                };
+                if self.company_name == "" || self.careers_url == "" {
+                    return Task::none() // TODO visual feedback
+                }
+                let company = Company {
+                    id: company_id,
+                    name: self.company_name.clone(),
+                    careers_url: self.careers_url.clone(),
+                };
+                let _ = Company::update(&self.db, company).expect("Failed to update company");
+                self.companies = Company::get_all(&self.db).expect("Failed to get companies");
+                self.hide_modal();
                 Task::none()
             }
             Message::Event(event) => match event {
@@ -290,6 +361,7 @@ impl JobHunter {
                                         underlay,
                                         column(vec![
                                             button(text("Edit"))
+                                                .on_press(Message::ShowEditCompanyModal(company_id))
                                                 .into(),
                                             button(text("Delete"))
                                                 .on_press(Message::DeleteCompany(company_id))
@@ -303,7 +375,7 @@ impl JobHunter {
                                     )
                                     .width(Fill)
                                     .alignment(drop_down::Alignment::Bottom)
-                                    .on_dismiss(Message::DismissCompanyDropdown(company_id));
+                                    .on_dismiss(Message::ToggleCompanyDropdown(company_id));
 
                                     row![
                                         text(&company.name),
@@ -357,47 +429,14 @@ impl JobHunter {
 
         match self.modal {
             Modal::CreateCompanyModal => {
-                let create_company_content = container(
-                    column![
-                        text("Track Company").size(24),
-                        column![
-                            column![
-                                text("Company Name").size(12),
-                                text_input("", &self.company_name) // hmm...
-                                    .on_input(Message::CompanyNameChanged)
-                                    .on_submit(Message::TrackNewCompany)
-                                    .padding(5)
-                            ]
-                            .spacing(5),
-                            column![
-                                text("Company's Careers Page URL").size(12),
-                                text_input("", &self.careers_url)
-                                    .on_input(Message::CareersURLChanged)
-                                    .on_submit(Message::TrackNewCompany)
-                                    .padding(5)
-                            ]
-                            .spacing(5),
-                            row![
-                                container(button(text("Save")).on_press(Message::TrackNewCompany))
-                                .width(Fill)
-                                .align_x(Alignment::End),
-                                button(text("Cancel")).on_press(Message::HideModal)
-                            ]
-                            .spacing(10)
-                            .width(Fill)
-                        ]
-                        .spacing(10),
-                    ]
-                    .spacing(20)
-                )
-                .width(300)
-                .padding(10)
-                .style(container::rounded_box);
+                let create_company_content = self.company_modal(Message::TrackNewCompany);
 
                 modal(main_window_content, create_company_content, Message::HideModal)
             }
             Modal::EditCompanyModal => {
-                main_window_content.into() // TODO
+                let edit_company_content = self.company_modal(Message::EditCompany);
+
+                modal(main_window_content, edit_company_content, Message::HideModal)
             }
             Modal::None => {
                 main_window_content.into()

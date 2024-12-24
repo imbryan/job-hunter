@@ -34,9 +34,27 @@ impl Company {
         .collect()
     }
 
+    pub fn get(conn: &Connection, id: i32) -> rusqlite::Result<Self> {
+        let sql = "SELECT * FROM company WHERE id = ?";
+        conn.prepare(sql)?
+            .query_row([id], |row| {
+                Ok(Company {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    careers_url: row.get(2)?,
+                })
+            })
+    }
+
     pub fn create(conn: &Connection, name: String, careers_url: String) -> rusqlite::Result<()> {
         let sql = "INSERT INTO company (name, careers_url) VALUES (?, ?)";
         conn.execute(sql, [name, careers_url])?;
+        Ok(())
+    }
+
+    pub fn update(conn: &Connection, company: Self) -> rusqlite::Result<()> {
+        let sql = "UPDATE company SET name = ?, careers_url = ? WHERE id = ?";
+        conn.execute(sql, [company.name, company.careers_url, company.id.to_string()])?;
         Ok(())
     }
 
