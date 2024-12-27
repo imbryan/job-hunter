@@ -1,6 +1,8 @@
 [package]
 name = "job-hunter"
 version = "0.1.0"
+authors = ["Bryan Grigorie"]
+repository = "https://github.com/imbryan/job-hunter"
 edition = "2021"
 
 [dependencies]
