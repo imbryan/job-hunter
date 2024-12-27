@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.39"
 iced = "0.13.1"
-iced_aw = { version = "0.11", default-features = false, features = ["drop_down"] }
+iced_aw = { version = "0.11", default-features = false, features = ["drop_down", "number_input"] }
 iced_font_awesome = "0.2.0"
 include_dir = "0.7.4"
 rusqlite = { version = "0.32.1", features = ["bundled"] }

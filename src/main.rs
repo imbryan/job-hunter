@@ -7,8 +7,8 @@ use iced::{Alignment, color, Element, Fill, Length, Padding, Subscription, Task,
 use iced::event::Event;
 use iced::keyboard;
 use iced::keyboard::key;
-use iced::widget::{button, center, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
-use iced_aw::{drop_down, DropDown};
+use iced::widget::{button, center, checkbox, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
+use iced_aw::{drop_down, DropDown, number_input};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
@@ -32,6 +32,13 @@ pub struct JobHunter {
     company_dropdowns: BTreeMap<i32, bool>,
     company_id: Option<i32>,
     job_posts: Vec<JobPost>,
+    filter_min_yoe: i32,
+    filter_max_yoe: i32,
+    filter_onsite: bool,
+    filter_hybrid: bool,
+    filter_remote: bool,
+    filter_job_title: String,
+    filter_location: String,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +57,14 @@ pub enum Message {
     ToggleCompanyDropdown(i32),
     ShowEditCompanyModal(i32),
     EditCompany,
+    FilterMinYOEChanged(i32),
+    FilterMaxYOEChanged(i32),
+    FilterOnsiteChanged(bool),
+    FilterHybridChanged(bool),
+    FilterRemoteChanged(bool),
+    FilterJobTitleChanged(String),
+    FilterLocationChanged(String),
+    ResetFilters,
 }
 
 pub struct Window {
@@ -119,6 +134,13 @@ impl JobHunter {
             company_dropdowns: BTreeMap::new(),
             company_id: None,
             job_posts: jobs,
+            filter_min_yoe: 0,
+            filter_max_yoe: 0,
+            filter_onsite: false,
+            filter_hybrid: false,
+            filter_remote: false,
+            filter_job_title: "".to_string(),
+            filter_location: "".to_string(),
             },
             open.map(Message::WindowOpened)
         )
@@ -184,6 +206,19 @@ impl JobHunter {
         self.company_name = "".to_string(); // hmm...
         self.careers_url = "".to_string();
         self.company_id = None;
+    }
+
+    fn reset_filters(&mut self) {
+        self.filter_job_title = "".to_string();
+        self.filter_location = "".to_string();
+        self.filter_min_yoe = 0;
+        self.filter_max_yoe = 0;
+        self.filter_onsite = false;
+        self.filter_hybrid = false;
+        self.filter_remote = false;
+
+        let jobs = JobPost::get_all(&self.db).expect("Failed to get job posts");
+        self.job_posts = jobs;
     }
     
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -300,6 +335,38 @@ impl JobHunter {
                 self.hide_modal();
                 Task::none()
             }
+            Message::FilterMinYOEChanged(num) => {
+                self.filter_min_yoe = num;
+                Task::none()
+            }
+            Message::FilterMaxYOEChanged(num) => {
+                self.filter_max_yoe = num;
+                Task::none()
+            }
+            Message::FilterOnsiteChanged(val) => {
+                self.filter_onsite = val;
+                Task::none()
+            }
+            Message::FilterHybridChanged(val) => {
+                self.filter_hybrid = val;
+                Task::none()
+            }
+            Message::FilterRemoteChanged(val) => {
+                self.filter_remote = val;
+                Task::none()
+            }
+            Message::FilterJobTitleChanged(title) => {
+                self.filter_job_title = title;
+                Task::none()
+            }
+            Message::FilterLocationChanged(location) => {
+                self.filter_location = location;
+                Task::none()
+            }
+            Message::ResetFilters => {
+                self.reset_filters();
+                Task::none()
+            }
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Tab), 
                     modifiers,
@@ -377,7 +444,7 @@ impl JobHunter {
                                         }
                                     )
                                     .width(Fill)
-                                    .alignment(drop_down::Alignment::Bottom)
+                                    .alignment(drop_down::Alignment::BottomEnd)
                                     .on_dismiss(Message::ToggleCompanyDropdown(company_id));
 
                                     row![
@@ -399,7 +466,8 @@ impl JobHunter {
                     .width(Fill)
                     .height(Length::FillPortion(3))
                     ,
-                    text("Settings area")
+                    // Settings area
+                    text("")
                     .height(Length::FillPortion(1))
                     .width(Fill)
                     .align_x(Alignment::Center)
@@ -415,9 +483,92 @@ impl JobHunter {
             container(
                 column![
                     // Search and filter area
-                    text("Search and filter area")
+                    column![
+                        row![
+                            column![
+                                text("Job Title").size(12),
+                                text_input("", &self.filter_job_title)
+                                    .on_input(Message::FilterJobTitleChanged)
+                                    .padding(5)
+                            ]
+                            .spacing(5),
+                            column![
+                                text("Location").size(12),
+                                text_input("", &self.filter_location)
+                                    .on_input(Message::FilterLocationChanged)
+                                    .padding(5)
+                            ]
+                            .spacing(5)
+                        ]
+                        .spacing(10),
+                        row![
+                            column![
+                                text("Min. Years").size(12),
+                                number_input(self.filter_min_yoe, 0..100, Message::FilterMinYOEChanged)
+                                    .padding(5)
+                                    .style(number_input::number_input::primary)
+                            ]
+                            .width(Length::FillPortion(1))
+                            .spacing(5),
+                            column![
+                                text("Max. Years").size(12),
+                                number_input(self.filter_max_yoe, 0..100, Message::FilterMaxYOEChanged)
+                                    .padding(5)
+                                    .style(number_input::number_input::primary)
+                            ]
+                            .width(Length::FillPortion(1))
+                            .spacing(5),
+                            row![
+                                checkbox("On-site", self.filter_onsite)
+                                    .on_toggle(Message::FilterOnsiteChanged)
+                                    .width(Fill),
+                                checkbox("Hybrid", self.filter_hybrid)
+                                    .on_toggle(Message::FilterHybridChanged)
+                                    .width(Fill),
+                                checkbox("Remote", self.filter_remote)
+                                    .on_toggle(Message::FilterRemoteChanged)
+                                    .width(Fill),
+                            ]
+                            .width(Length::FillPortion(2))
+                            .spacing(25),
+                        ]
+                        .spacing(10),
+                        row![
+                            container(
+                                button(
+                                    row![
+                                        text("Reset"),
+                                        fa_icon_solid("filter-circle-xmark").size(15.0).color(color!(255,255,255)),
+                                    ]
+                                    .spacing(5)
+                                    .align_y(Alignment::Center)
+                                ).on_press(Message::ResetFilters)
+                            )
+                                .width(Fill)
+                                .align_x(Alignment::End),
+                            button(
+                                row![
+                                    text("Filter Results"),
+                                    fa_icon_solid("filter").size(15.0).color(color!(255,255,255)),
+                                ]
+                                .spacing(5)
+                                .align_y(Alignment::Center)
+                            ),
+                            button(
+                                row![
+                                    text("Find Jobs"),
+                                    fa_icon_solid("magnifying-glass").size(15.0).color(color!(255,255,255)),
+                                ]
+                                .spacing(5)
+                                .align_y(Alignment::Center)
+                            ),
+                        ]
+                        .spacing(10)
+                        .width(Fill)
+                    ]
+                    .spacing(10)
                     .width(Fill)
-                    .align_x(Alignment::Center),
+                    .padding(Padding::from([0, 30]).top(20)),
                     // Job list
                     scrollable(
                         Column::with_children(
