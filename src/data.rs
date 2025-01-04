@@ -160,8 +160,33 @@ pub struct JobApplication {
     pub id: i32,
     pub job_post_id: i32,
     pub status: JobApplicationStatus,
-    pub date_applied: DateTime<Utc>,
-    pub date_responded: DateTime<Utc>,
+    pub date_applied: Option<DateTime<Utc>>,
+    pub date_responded: Option<DateTime<Utc>>,
+}
+
+impl JobApplication {
+    pub fn get(conn: &Connection, id: i32) -> rusqlite::Result<Self> {
+        let sql = "SELECT * FROM job_application WHERE id = ?";
+        conn.prepare(sql)?
+            .query_row([id], |row| {
+                let status_str: String = row.get(2)?;
+                let status = match JobApplicationStatus::from_str(&status_str) {
+                    Ok(variant) => variant,
+                    Err(_) => panic!(),
+                };
+                
+                let date_applied_timestamp = DateTime::from_timestamp(row.get(3)?, 0);
+                let date_responded_timestamp = DateTime::from_timestamp(row.get(4)?, 0);
+
+                Ok(JobApplication {
+                    id: row.get(0)?,
+                    job_post_id: row.get(1)?,
+                    status: status,
+                    date_applied: date_applied_timestamp,
+                    date_responded: date_responded_timestamp,
+                })
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -172,4 +197,33 @@ pub enum JobApplicationStatus {
     Offer,
     Closed,
     Rejected,
+}
+
+impl FromStr for JobApplicationStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "New" => Ok(JobApplicationStatus::New),
+            "Applied" => Ok(JobApplicationStatus::Applied),
+            "Interview" => Ok(JobApplicationStatus::Interview),
+            "Offer" => Ok(JobApplicationStatus::Offer),
+            "Closed" => Ok(JobApplicationStatus::Closed),
+            "Rejected" => Ok(JobApplicationStatus::Rejected),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Display for JobApplicationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            JobApplicationStatus::New => write!(f, "New"),
+            JobApplicationStatus::Applied => write!(f, "Applied"),
+            JobApplicationStatus::Interview => write!(f, "Interview"),
+            JobApplicationStatus::Offer => write!(f, "Offer"),
+            JobApplicationStatus::Closed => write!(f, "Closed"),
+            JobApplicationStatus::Rejected => write!(f, "Rejected"),
+        }
+    }
 }

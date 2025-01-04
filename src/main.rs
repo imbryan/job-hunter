@@ -8,11 +8,11 @@ use iced::event::Event;
 use iced::keyboard;
 use iced::keyboard::key;
 use iced::widget::{button, center, checkbox, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
-use iced_aw::{drop_down, DropDown, number_input};
+use iced_aw::{drop_down, DropDown, helpers::badge, number_input, style};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
-use self::data::{Company, migrate, JobPost};
+use self::data::{Company, JobApplication, JobApplicationStatus, JobPost, migrate};
 
 pub fn main() -> iced::Result {
     iced::daemon(JobHunter::title, JobHunter::update, JobHunter::view)
@@ -401,7 +401,7 @@ impl JobHunter {
             container(
                 column![
                     row![
-                        text("All"),
+                        text("Companies"),
                         container(
                             button(
                                 row![
@@ -432,6 +432,8 @@ impl JobHunter {
                                         column(vec![
                                             button(text("Edit"))
                                                 .on_press(Message::ShowEditCompanyModal(company_id))
+                                                .into(),
+                                            button(text("Exclude"))
                                                 .into(),
                                             button(text("Delete"))
                                                 .on_press(Message::DeleteCompany(company_id))
@@ -577,7 +579,7 @@ impl JobHunter {
                                 .map(|job_post| {
                                     let company = Company::get(&self.db, job_post.company_id).unwrap();
                                     let location_text = format!("{} ({})", &job_post.location, &job_post.location_type);
-                                    let posted_text = format!("Posted {}", &job_post.date_posted.unwrap().format("%m/%d/%Y"));
+                                    let posted_text = format!("{}", &job_post.date_posted.unwrap().format("%m/%d/%Y"));
 
                                     let min_yoe = &job_post.min_yoe.unwrap_or(-1);
                                     let max_yoe = &job_post.max_yoe.unwrap_or(-1);
@@ -596,28 +598,62 @@ impl JobHunter {
                                         _ => "No salary information".to_string(),
                                     };
 
+                                    let app_sql = "SELECT id FROM job_application WHERE job_post_id = ?";
+                                    let app_id: Option<i32> = self.db.prepare(app_sql)
+                                        .unwrap()
+                                        .query_row([job_post.id], |row| {
+                                            row.get(0)
+                                        }).unwrap_or(None);
+                                    let application: JobApplication;
+                                    application = match app_id {
+                                        Some(id) => JobApplication::get(&self.db, id).unwrap(),
+                                        None => JobApplication {
+                                            id: -1,
+                                            job_post_id: job_post.id,
+                                            status: JobApplicationStatus::New,
+                                            date_applied: None,
+                                            date_responded: None,
+                                        },
+                                    };
+                                    let status_text = format!("{}", application.status);
+                                    let status_style = match application.status {
+                                        JobApplicationStatus::New => style::badge::info,
+                                        JobApplicationStatus::Applied => style::badge::warning,
+                                        JobApplicationStatus::Interview => style::badge::primary,
+                                        JobApplicationStatus::Offer => style::badge::success,
+                                        JobApplicationStatus::Closed => style::badge::danger,
+                                        JobApplicationStatus::Rejected => style::badge::danger,
+                                    };
+                                    
                                     container(
                                         row![
                                             column![
                                                 text(&job_post.job_title),
-                                                text(company.name),
-                                                text(location_text),
-                                                text(posted_text),
+                                                text(company.name).size(12),
+                                                text(location_text).size(12),
+                                                text(posted_text).size(12),
                                             ]
+                                            .spacing(5)
                                             .width(Length::FillPortion(1)),
                                             column![
+                                                text("Qualifications").size(12),
                                                 text(yoe_text),
                                                 text("Skills"),
                                             ]
+                                            .spacing(5)
                                             .width(Length::FillPortion(1)),
                                             column![
+                                                text("Compensation").size(12),
                                                 text(pay_text),
                                                 text("Benefits"),
                                             ]
+                                            .spacing(5)
                                             .width(Length::FillPortion(1)),
                                             column![
-                                                text("Application"),
+                                                text("Status").size(12),
+                                                badge(text(status_text)).style(status_style),
                                             ]
+                                            .spacing(5)
                                             .width(Length::FillPortion(1)),
                                         ]
                                         .width(Fill)
