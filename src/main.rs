@@ -39,6 +39,7 @@ pub struct JobHunter {
     filter_remote: bool,
     filter_job_title: String,
     filter_location: String,
+    job_dropdowns: BTreeMap<i32, bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +66,7 @@ pub enum Message {
     FilterJobTitleChanged(String),
     FilterLocationChanged(String),
     ResetFilters,
+    ToggleJobDropdown(i32),
 }
 
 pub struct Window {
@@ -141,6 +143,7 @@ impl JobHunter {
             filter_remote: false,
             filter_job_title: "".to_string(),
             filter_location: "".to_string(),
+            job_dropdowns: BTreeMap::new(),
             },
             open.map(Message::WindowOpened)
         )
@@ -367,6 +370,15 @@ impl JobHunter {
                 self.reset_filters();
                 Task::none()
             }
+            Message::ToggleJobDropdown(id) => {
+                let current_val = match self.job_dropdowns.get(&id) {
+                    Some(&status) => status,
+                    None => false
+                };
+                self.job_dropdowns.insert(id, !current_val);
+                Task::none()
+            }
+            // Event Messages
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Tab), 
                     modifiers,
@@ -624,6 +636,32 @@ impl JobHunter {
                                         JobApplicationStatus::Closed => style::badge::danger,
                                         JobApplicationStatus::Rejected => style::badge::danger,
                                     };
+
+                                    // Dropdown
+                                    let underlay = ellipsis_button(color!(255,255,255)).on_press(Message::ToggleJobDropdown(job_post.id));
+                                    let apply_text = match app_id {
+                                        Some(_) => "Application",
+                                        None => "Apply",
+                                    };
+                                    let dropdown = DropDown::new(
+                                        underlay,
+                                        column(vec![
+                                            button(text(apply_text))
+                                                .into(),
+                                            button(text("Edit"))
+                                                .into(),
+                                            button(text("Delete"))
+                                                .into(),
+                                        ])
+                                        .spacing(5),
+                                        match self.job_dropdowns.get(&job_post.id) {
+                                            Some(&status) => status,
+                                            None => false,
+                                        }
+                                    )
+                                    .width(Fill)
+                                    .alignment(drop_down::Alignment::BottomStart)
+                                    .on_dismiss(Message::ToggleJobDropdown(job_post.id));
                                     
                                     container(
                                         row![
@@ -633,28 +671,32 @@ impl JobHunter {
                                                 text(location_text).size(12),
                                                 text(posted_text).size(12),
                                             ]
-                                            .spacing(5)
-                                            .width(Length::FillPortion(1)),
+                                                .spacing(5)
+                                                .width(Length::FillPortion(2)),
                                             column![
                                                 text("Qualifications").size(12),
                                                 text(yoe_text),
                                                 text("Skills"),
                                             ]
-                                            .spacing(5)
-                                            .width(Length::FillPortion(1)),
+                                                .spacing(5)
+                                                .width(Length::FillPortion(2)),
                                             column![
                                                 text("Compensation").size(12),
                                                 text(pay_text),
                                                 text("Benefits"),
                                             ]
-                                            .spacing(5)
-                                            .width(Length::FillPortion(1)),
+                                                .spacing(5)
+                                                .width(Length::FillPortion(2)),
                                             column![
                                                 text("Status").size(12),
                                                 badge(text(status_text)).style(status_style),
                                             ]
-                                            .spacing(5)
-                                            .width(Length::FillPortion(1)),
+                                                .spacing(5)
+                                                .width(Length::FillPortion(1)),
+                                            row![
+                                                container(dropdown)
+                                                    .center_x(Fill),
+                                            ],
                                         ]
                                         .width(Fill)
                                     )
