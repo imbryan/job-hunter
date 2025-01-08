@@ -2,7 +2,7 @@ mod data;
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{Datelike, DateTime, NaiveDate, Utc};
 use iced::{Alignment, color, Element, Fill, Font, Length, Padding, Subscription, Task, Theme, Vector, window};
 use iced::event::Event;
 use iced::keyboard;
@@ -12,7 +12,7 @@ use iced_aw::{date_picker::Date, drop_down, DropDown, helpers::badge, date_picke
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
-use self::data::{Company, JobApplication, JobApplicationStatus, JobPost, migrate};
+use self::data::{Company, get_iced_date, get_utc, JobApplication, JobApplicationStatus, JobPost, migrate};
 
 pub fn main() -> iced::Result {
     iced::daemon(JobHunter::title, JobHunter::update, JobHunter::view)
@@ -147,13 +147,6 @@ fn modal<'a, Message>(
         )
     ]
     .into()
-}
-
-fn get_utc(date: Option<iced_aw::date_picker::Date>) -> Option<chrono::DateTime<Utc>> {
-    date.and_then(|date| {
-        let naive_date = NaiveDate::from_ymd_opt(date.year, date.month, date.day)?;
-        Some(naive_date.and_hms_opt(0,0,0)?.and_utc())
-    })
 }
 
 impl JobHunter {
@@ -485,6 +478,25 @@ impl JobHunter {
                 self.hide_modal();
                 Task::none()
             }
+            Message::EditApplication => {
+                let app_id = match self.job_app_id {
+                    Some(id) => id,
+                    None => return Task::none(),
+                };
+                if self.job_app_status == None {
+                    return Task::none()
+                }
+                let app = JobApplication {
+                    id: app_id,
+                    job_post_id: self.job_post_id.unwrap(),
+                    status: self.job_app_status.clone().unwrap(),
+                    date_applied: get_utc(self.job_app_applied),
+                    date_responded: get_utc(self.job_app_responded),
+                };
+                let _ = JobApplication::update(&self.db, app).expect("Failed to update application");
+                self.hide_modal();
+                Task::none()
+            }
             // Job Post
             Message::ToggleJobDropdown(id) => {
                 let current_val = match self.job_dropdowns.get(&id) {
@@ -559,6 +571,17 @@ impl JobHunter {
                 self.job_post_id = Some(job_post_id);
                 // self.job_app_applied = Some(Date::today());
                 self.modal = Modal::CreateApplicationModal;
+                focus_next()
+            }
+            Message::ShowEditApplicationModal(application_id) => {
+                let application = JobApplication::get(&self.db, application_id).unwrap();
+                self.job_post_id = Some(application.job_post_id);
+                self.job_app_id = Some(application.id);
+                self.job_app_status_index = JobApplicationStatus::ALL.iter().position(|x| x == &application.status);
+                self.job_app_status = Some(application.status);
+                self.job_app_applied = get_iced_date(application.date_applied);
+                self.job_app_responded = get_iced_date(application.date_responded);
+                self.modal = Modal::EditApplicationModal;
                 focus_next()
             }
             Message::JobApplicationStatusChanged(index, status) => {
@@ -959,6 +982,11 @@ impl JobHunter {
                 let create_job_app_content = self.job_app_modal(Message::CreateApplication);
 
                 modal(main_window_content, create_job_app_content, Message::HideModal)
+            }
+            Modal::EditApplicationModal => {
+                let edit_job_app_content = self.job_app_modal(Message::EditApplication);
+
+                modal(main_window_content, edit_job_app_content, Message::HideModal)
             }
             Modal::None | _ => {
                 main_window_content.into()

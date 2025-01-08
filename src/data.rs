@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use chrono::{DateTime, Utc};
+use chrono::{Datelike, DateTime, NaiveDate, Utc};
 use include_dir::{include_dir, Dir};
 use rusqlite::{Connection, params};
 use rusqlite_migration::Migrations;
@@ -19,6 +19,19 @@ pub fn migrate(conn: &mut Connection) {
 
 pub fn timestamp_to_utc(ts: Option<i64>) -> Option<DateTime<Utc>> {
     ts.map(|ts| DateTime::from_timestamp(ts, 0))?
+}
+
+pub fn get_utc(date: Option<iced_aw::date_picker::Date>) -> Option<chrono::DateTime<Utc>> {
+    date.and_then(|date| {
+        let naive_date = NaiveDate::from_ymd_opt(date.year, date.month, date.day)?;
+        Some(naive_date.and_hms_opt(0,0,0)?.and_utc())
+    })
+}
+
+pub fn get_iced_date(date: Option<chrono::DateTime<Utc>>) -> Option<iced_aw::date_picker::Date> {
+    date.and_then(|date| {
+        Some(iced_aw::date_picker::Date::from_ymd(date.year(), date.month(), date.day()) )
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -207,6 +220,25 @@ impl JobApplication {
             applied, 
             responded, 
             application.job_post_id,
+        ])?;
+        Ok(())
+    }
+
+    pub fn update(conn: &Connection, application: Self) -> rusqlite::Result<()> {
+        let applied = match application.date_applied {
+            Some(date) => Some(date.timestamp()),
+            None => None
+        };
+        let responded = match application.date_responded {
+            Some(date) => Some(date.timestamp()),
+            None => None
+        };
+        let sql = "UPDATE job_application SET status = ?, date_applied = ?, date_responded = ? WHERE id = ?";
+        conn.execute(sql, params![
+            application.status.name(),
+            applied,
+            responded,
+            application.id.to_string(),
         ])?;
         Ok(())
     }
