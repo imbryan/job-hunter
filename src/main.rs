@@ -3,12 +3,12 @@ mod data;
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use iced::{Alignment, color, Element, Fill, Length, Padding, Subscription, Task, Theme, Vector, window};
+use iced::{Alignment, color, Element, Fill, Font, Length, Padding, Subscription, Task, Theme, Vector, window};
 use iced::event::Event;
 use iced::keyboard;
 use iced::keyboard::key;
 use iced::widget::{button, center, checkbox, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
-use iced_aw::{drop_down, DropDown, helpers::badge, number_input, style};
+use iced_aw::{drop_down, DropDown, helpers::badge, number_input, SelectionList, style};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
@@ -22,16 +22,18 @@ pub fn main() -> iced::Result {
 }
 
 pub struct JobHunter {
-    companies: Vec<Company>,
-    db: Connection,
+    // Window
     windows: BTreeMap<window::Id, Window>,
     main_window: window::Id,
-    modal: Modal,
-    company_name: String,
-    careers_url: String,
+    // Databse
+    db: Connection,
+    // Company
+    companies: Vec<Company>,
     company_dropdowns: BTreeMap<i32, bool>,
-    company_id: Option<i32>,
+    // JobPosts
     job_posts: Vec<JobPost>,
+    job_dropdowns: BTreeMap<i32, bool>,
+    // Filter
     filter_min_yoe: i32,
     filter_max_yoe: i32,
     filter_onsite: bool,
@@ -39,25 +41,40 @@ pub struct JobHunter {
     filter_remote: bool,
     filter_job_title: String,
     filter_location: String,
-    job_dropdowns: BTreeMap<i32, bool>,
+    // Modal
+    modal: Modal,
+    company_name: String,
+    careers_url: String,
+    company_id: Option<i32>,
+    job_post_id: Option<i32>,
+    job_app_id: Option<i32>,
+    job_app_status: Option<JobApplicationStatus>,
+    job_app_status_index: Option<usize>,
+    //job_app_applied,
+    //job_app_responded,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    ToggleCompanyMenu,
-    TrackNewCompany,
-    DeleteCompany(i32),
+    // Window
+    OpenWindow, 
     WindowOpened(window::Id), 
     WindowClosed(window::Id),
-    OpenWindow, 
-    ShowCreateCompanyModal,
-    HideModal,
+    // Event
     Event(Event),
-    CompanyNameChanged(String),
-    CareersURLChanged(String),
-    ToggleCompanyDropdown(i32),
-    ShowEditCompanyModal(i32),
+    // Company
+    DeleteCompany(i32),
+    TrackNewCompany,
     EditCompany,
+    ToggleCompanyMenu,
+    // JobApplication
+    CreateApplication,
+    EditApplication,
+    // Dropdown
+    ToggleCompanyDropdown(i32),
+    ToggleJobDropdown(i32),
+    // Filter
+    ResetFilters,
     FilterMinYOEChanged(i32),
     FilterMaxYOEChanged(i32),
     FilterOnsiteChanged(bool),
@@ -65,8 +82,15 @@ pub enum Message {
     FilterRemoteChanged(bool),
     FilterJobTitleChanged(String),
     FilterLocationChanged(String),
-    ResetFilters,
-    ToggleJobDropdown(i32),
+    // Modal
+    HideModal,
+    ShowCreateCompanyModal,
+    ShowEditCompanyModal(i32),
+    CompanyNameChanged(String),
+    CareersURLChanged(String),
+    ShowCreateApplicationModal,
+    ShowEditApplicationModal(i32),
+    JobApplicationStatusChanged(usize, JobApplicationStatus),
 }
 
 pub struct Window {
@@ -87,6 +111,8 @@ pub enum Modal {
     None,
     CreateCompanyModal,
     EditCompanyModal,
+    CreateApplicationModal,
+    EditApplicationModal,
 }
 
 // https://github.com/iced-rs/iced/blob/latest/examples/modal/src/main.rs
@@ -126,24 +152,28 @@ impl JobHunter {
         let (id, open) = window::open(window::Settings::default());
         (
             Self {
-            companies: companies,
-            db: conn,
-            windows: BTreeMap::new(),
-            main_window: id,
-            modal: Modal::None,
-            company_name: "".to_string(),
-            careers_url: "".to_string(),
-            company_dropdowns: BTreeMap::new(),
-            company_id: None,
-            job_posts: jobs,
-            filter_min_yoe: 0,
-            filter_max_yoe: 0,
-            filter_onsite: false,
-            filter_hybrid: false,
-            filter_remote: false,
-            filter_job_title: "".to_string(),
-            filter_location: "".to_string(),
-            job_dropdowns: BTreeMap::new(),
+                companies: companies,
+                db: conn,
+                windows: BTreeMap::new(),
+                main_window: id,
+                modal: Modal::None,
+                company_name: "".to_string(),
+                careers_url: "".to_string(),
+                company_dropdowns: BTreeMap::new(),
+                company_id: None,
+                job_posts: jobs,
+                filter_min_yoe: 0,
+                filter_max_yoe: 0,
+                filter_onsite: false,
+                filter_hybrid: false,
+                filter_remote: false,
+                filter_job_title: "".to_string(),
+                filter_location: "".to_string(),
+                job_dropdowns: BTreeMap::new(),
+                job_post_id: None,
+                job_app_id: None,
+                job_app_status: None,
+                job_app_status_index: None,
             },
             open.map(Message::WindowOpened)
         )
@@ -204,11 +234,61 @@ impl JobHunter {
         .into()
     }
 
+    fn job_app_modal<'a>(&self, submit_message: Message) -> Element<'a, Message> {
+        let title = match &self.job_app_id {
+            Some(_) => "Edit Application",
+            None => "New Application"
+        };
+
+        let job_status_select: SelectionList<'_, JobApplicationStatus, Message, Theme, iced::Renderer> = SelectionList::new_with(
+            &JobApplicationStatus::ALL,
+            Message::JobApplicationStatusChanged,
+            12.0,
+            5.0,
+            style::selection_list::primary,
+            self.job_app_status_index,
+            Font::default(),
+        )
+            // .width(Length::Shrink)
+            .height(Length::Fixed(75.0));
+
+        container(
+            column![
+                text(title).size(24),
+                column![
+                    column![
+                        text("Status").size(12),
+                        job_status_select,
+                    ]
+                        .spacing(5),
+                    row![
+                        container(button(text("Save")).on_press(submit_message.clone()))
+                        .width(Fill)
+                        .align_x(Alignment::End),
+                        button(text("Cancel")).on_press(Message::HideModal)
+                    ]
+                    .spacing(10)
+                    .width(Fill)
+                ]
+                .spacing(10),
+            ]
+            .spacing(20)
+        )
+        .width(300)
+        .padding(10)
+        .style(container::rounded_box)
+        .into()
+    }
+
     fn hide_modal(&mut self) {
         self.modal = Modal::None;
         self.company_name = "".to_string(); // hmm...
         self.careers_url = "".to_string();
         self.company_id = None;
+        self.job_post_id = None;
+        self.job_app_id = None;
+        self.job_app_status = None;
+        self.job_app_status_index = None;
     }
 
     fn reset_filters(&mut self) {
@@ -226,6 +306,7 @@ impl JobHunter {
     
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            // Window
             Message::OpenWindow => { 
                 let Some(last_window) = self.windows.keys().last() else {
                     return Task::none()
@@ -265,6 +346,7 @@ impl JobHunter {
                     Task::none()
                 }
             }
+            // Company
             Message::TrackNewCompany => {
                 if self.company_name == "" || self.careers_url == "" { // hmm...
                     return Task::none() // TODO ideally there would be visual feedback
@@ -283,22 +365,6 @@ impl JobHunter {
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
                 Task::none()
             }
-            Message::ShowCreateCompanyModal => {
-                self.modal = Modal::CreateCompanyModal;
-                focus_next()
-            }
-            Message::HideModal => {
-                self.hide_modal();
-                Task::none()
-            }
-            Message::CompanyNameChanged(name) => {
-                self.company_name = name; // hmm...
-                Task::none()
-            }
-            Message::CareersURLChanged(careers_url) => {
-                self.careers_url = careers_url;
-                Task::none()
-            }
             Message::ToggleCompanyDropdown(id) => {
                 let current_val = match self.company_dropdowns.get(&id) {
                     Some(&status) => status,
@@ -306,15 +372,6 @@ impl JobHunter {
                 };
                 self.company_dropdowns.insert(id, !current_val);
                 Task::none()
-            }
-            Message::ShowEditCompanyModal(id) => {
-                let company = Company::get(&self.db, id).unwrap();
-                self.company_name = company.name;
-                self.careers_url = company.careers_url;
-                self.company_id = Some(id);
-                self.company_dropdowns.insert(id, false);
-                self.modal = Modal::EditCompanyModal;
-                focus_next()
             }
             Message::EditCompany => {
                 let company_id = match self.company_id {
@@ -338,6 +395,24 @@ impl JobHunter {
                 self.hide_modal();
                 Task::none()
             }
+            // Job Application
+            Message::CreateApplication => {
+                if self.job_app_status == None {
+                    return Task::none() // TODO feedback
+                }
+                self.hide_modal();
+                Task::none()
+            }
+            // Job Post
+            Message::ToggleJobDropdown(id) => {
+                let current_val = match self.job_dropdowns.get(&id) {
+                    Some(&status) => status,
+                    None => false
+                };
+                self.job_dropdowns.insert(id, !current_val);
+                Task::none()
+            }
+            // Filter
             Message::FilterMinYOEChanged(num) => {
                 self.filter_min_yoe = num;
                 Task::none()
@@ -370,15 +445,44 @@ impl JobHunter {
                 self.reset_filters();
                 Task::none()
             }
-            Message::ToggleJobDropdown(id) => {
-                let current_val = match self.job_dropdowns.get(&id) {
-                    Some(&status) => status,
-                    None => false
-                };
-                self.job_dropdowns.insert(id, !current_val);
+            // Modal
+            Message::ShowCreateCompanyModal => {
+                self.modal = Modal::CreateCompanyModal;
+                focus_next()
+            }
+            Message::HideModal => {
+                self.hide_modal();
                 Task::none()
             }
-            // Event Messages
+            Message::CompanyNameChanged(name) => {
+                self.company_name = name; // hmm...
+                Task::none()
+            }
+            Message::CareersURLChanged(careers_url) => {
+                self.careers_url = careers_url;
+                Task::none()
+            }
+            Message::ShowEditCompanyModal(id) => {
+                let company = Company::get(&self.db, id).unwrap();
+                self.company_name = company.name;
+                self.careers_url = company.careers_url;
+                self.company_id = Some(id);
+                self.company_dropdowns.insert(id, false);
+                self.modal = Modal::EditCompanyModal;
+                focus_next()
+            }
+            Message::ShowCreateApplicationModal => {
+                self.job_app_status_index = JobApplicationStatus::ALL.iter().position(|x| x == &JobApplicationStatus::New);
+                self.job_app_status = Some(JobApplicationStatus::New);
+                self.modal = Modal::CreateApplicationModal;
+                focus_next()
+            }
+            Message::JobApplicationStatusChanged(index, status) => {
+                self.job_app_status = Some(status);
+                self.job_app_status_index = Some(index);
+                Task::none()
+            }
+            // Event
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Tab), 
                     modifiers,
@@ -639,14 +743,23 @@ impl JobHunter {
 
                                     // Dropdown
                                     let underlay = ellipsis_button(color!(255,255,255)).on_press(Message::ToggleJobDropdown(job_post.id));
-                                    let apply_text = match app_id {
-                                        Some(_) => "Application",
-                                        None => "Apply",
+                                    let apply_text: &str;
+                                    let apply_msg: Message;
+                                    match app_id {
+                                        Some(id) => {
+                                            apply_text = "Application";
+                                            apply_msg = Message::ShowEditApplicationModal(id)
+                                        },
+                                        None => {
+                                            apply_text = "Application";
+                                            apply_msg = Message::ShowCreateApplicationModal;
+                                        },
                                     };
                                     let dropdown = DropDown::new(
                                         underlay,
                                         column(vec![
                                             button(text(apply_text))
+                                                .on_press(apply_msg)
                                                 .into(),
                                             button(text("Edit"))
                                                 .into(),
@@ -660,7 +773,7 @@ impl JobHunter {
                                         }
                                     )
                                     .width(Fill)
-                                    .alignment(drop_down::Alignment::BottomStart)
+                                    .alignment(drop_down::Alignment::Bottom)
                                     .on_dismiss(Message::ToggleJobDropdown(job_post.id));
                                     
                                     container(
@@ -723,6 +836,7 @@ impl JobHunter {
         ];
 
         match self.modal {
+            // Company Modals
             Modal::CreateCompanyModal => {
                 let create_company_content = self.company_modal(Message::TrackNewCompany);
 
@@ -733,7 +847,13 @@ impl JobHunter {
 
                 modal(main_window_content, edit_company_content, Message::HideModal)
             }
-            Modal::None => {
+            // Job Application Modals
+            Modal::CreateApplicationModal => {
+                let create_job_app_content = self.job_app_modal(Message::CreateApplication);
+
+                modal(main_window_content, create_job_app_content, Message::HideModal)
+            }
+            Modal::None | _ => {
                 main_window_content.into()
             }
         }

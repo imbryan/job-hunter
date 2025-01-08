@@ -189,7 +189,7 @@ impl JobApplication {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum JobApplicationStatus {
     New,
     Applied,
@@ -197,6 +197,28 @@ pub enum JobApplicationStatus {
     Offer,
     Closed,
     Rejected,
+}
+
+impl JobApplicationStatus {
+    pub const ALL: [JobApplicationStatus; 6] = [
+        JobApplicationStatus::New,
+        JobApplicationStatus::Applied,
+        JobApplicationStatus::Interview,
+        JobApplicationStatus::Offer,
+        JobApplicationStatus::Closed,
+        JobApplicationStatus::Rejected,
+    ];
+
+    pub fn name(&self) -> String {
+        match self {
+            JobApplicationStatus::New => "New".to_owned(),
+            JobApplicationStatus::Applied => "Applied".to_owned(),
+            JobApplicationStatus::Interview => "Interview".to_owned(),
+            JobApplicationStatus::Offer => "Offer".to_owned(),
+            JobApplicationStatus::Closed => "Closed".to_owned(),
+            JobApplicationStatus::Rejected => "Rejected".to_owned(),
+        }
+    }
 }
 
 impl FromStr for JobApplicationStatus {
