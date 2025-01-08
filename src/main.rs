@@ -2,13 +2,13 @@ mod data;
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use iced::{Alignment, color, Element, Fill, Font, Length, Padding, Subscription, Task, Theme, Vector, window};
 use iced::event::Event;
 use iced::keyboard;
 use iced::keyboard::key;
 use iced::widget::{button, center, checkbox, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
-use iced_aw::{drop_down, DropDown, helpers::badge, number_input, SelectionList, style};
+use iced_aw::{date_picker::Date, drop_down, DropDown, helpers::badge, date_picker, number_input, SelectionList, style};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
@@ -50,8 +50,10 @@ pub struct JobHunter {
     job_app_id: Option<i32>,
     job_app_status: Option<JobApplicationStatus>,
     job_app_status_index: Option<usize>,
-    //job_app_applied,
-    //job_app_responded,
+    job_app_applied: Option<Date>,
+    pick_job_app_applied: bool,
+    job_app_responded: Option<Date>,
+    pick_job_app_responded: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -88,9 +90,14 @@ pub enum Message {
     ShowEditCompanyModal(i32),
     CompanyNameChanged(String),
     CareersURLChanged(String),
-    ShowCreateApplicationModal,
+    ShowCreateApplicationModal(i32),
     ShowEditApplicationModal(i32),
     JobApplicationStatusChanged(usize, JobApplicationStatus),
+    JobApplicationAppliedChanged(Date),
+    JobApplicationRespondedChanged(Date),
+    PickJobApplicationApplied,
+    PickJobApplicationResponded,
+    CancelJobApplicationPickers,
 }
 
 pub struct Window {
@@ -142,6 +149,13 @@ fn modal<'a, Message>(
     .into()
 }
 
+fn get_utc(date: Option<iced_aw::date_picker::Date>) -> Option<chrono::DateTime<Utc>> {
+    date.and_then(|date| {
+        let naive_date = NaiveDate::from_ymd_opt(date.year, date.month, date.day)?;
+        Some(naive_date.and_hms_opt(0,0,0)?.and_utc())
+    })
+}
+
 impl JobHunter {
     fn new() -> (Self, Task<Message>) {
         let mut conn = data::connect();
@@ -174,6 +188,10 @@ impl JobHunter {
                 job_app_id: None,
                 job_app_status: None,
                 job_app_status_index: None,
+                job_app_applied: None,
+                pick_job_app_applied: false,
+                job_app_responded: None,
+                pick_job_app_responded: false,
             },
             open.map(Message::WindowOpened)
         )
@@ -252,6 +270,32 @@ impl JobHunter {
             // .width(Length::Shrink)
             .height(Length::Fixed(75.0));
 
+        let applied_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> = button(text("Pick")).on_press(Message::PickJobApplicationApplied);
+        let date_applied_picker = date_picker(
+            self.pick_job_app_applied,
+            self.job_app_applied.unwrap_or(Date::today()),
+            applied_btn,
+            Message::CancelJobApplicationPickers,
+            Message::JobApplicationAppliedChanged,
+        );
+        let applied = match &self.job_app_applied {
+            Some(date) => format!("{}/{}/{}", date.month, date.day, date.year),
+            None => "None".to_string(),
+        };
+
+        let responded_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> = button(text("Pick")).on_press(Message::PickJobApplicationResponded);
+        let date_responded_picker = date_picker(
+            self.pick_job_app_responded,
+            self.job_app_responded.unwrap_or(Date::today()),
+            responded_btn,
+            Message::CancelJobApplicationPickers,
+            Message::JobApplicationRespondedChanged,
+        );
+        let responded = match &self.job_app_responded {
+            Some(date) => format!("{}/{}/{}", date.month, date.day, date.year),
+            None => "None".to_string(),
+        };
+
         container(
             column![
                 text(title).size(24),
@@ -261,6 +305,32 @@ impl JobHunter {
                         job_status_select,
                     ]
                         .spacing(5),
+                    row![
+                        column![
+                            text("Date Applied").size(12),
+                            row![
+                                text(applied),
+                                date_applied_picker,
+                            ]
+                                .spacing(10)
+                                .align_y(Alignment::Center),
+                        ]
+                            .width(Length::FillPortion(1))
+                            .spacing(5),
+                        column![
+                            text("Date Responded").size(12),
+                            row![
+                                text(responded),
+                                date_responded_picker,
+                            ]
+                                .spacing(10)
+                                .align_y(Alignment::Center),
+                        ]
+                            .width(Length::FillPortion(1))
+                            .spacing(5),
+                    ]
+                        .spacing(15)
+                        .width(Fill),
                     row![
                         container(button(text("Save")).on_press(submit_message.clone()))
                         .width(Fill)
@@ -289,6 +359,10 @@ impl JobHunter {
         self.job_app_id = None;
         self.job_app_status = None;
         self.job_app_status_index = None;
+        self.job_app_applied = None;
+        self.pick_job_app_applied = false;
+        self.job_app_responded = None;
+        self.pick_job_app_responded = false;
     }
 
     fn reset_filters(&mut self) {
@@ -400,6 +474,14 @@ impl JobHunter {
                 if self.job_app_status == None {
                     return Task::none() // TODO feedback
                 }
+                let new_app = JobApplication {
+                    id: 0,
+                    job_post_id: self.job_post_id.unwrap(),
+                    status: self.job_app_status.clone().unwrap(),
+                    date_applied: get_utc(self.job_app_applied),
+                    date_responded: get_utc(self.job_app_responded),
+                };
+                let _ = JobApplication::create(&self.db, new_app);
                 self.hide_modal();
                 Task::none()
             }
@@ -471,15 +553,40 @@ impl JobHunter {
                 self.modal = Modal::EditCompanyModal;
                 focus_next()
             }
-            Message::ShowCreateApplicationModal => {
+            Message::ShowCreateApplicationModal(job_post_id) => {
                 self.job_app_status_index = JobApplicationStatus::ALL.iter().position(|x| x == &JobApplicationStatus::New);
                 self.job_app_status = Some(JobApplicationStatus::New);
+                self.job_post_id = Some(job_post_id);
+                // self.job_app_applied = Some(Date::today());
                 self.modal = Modal::CreateApplicationModal;
                 focus_next()
             }
             Message::JobApplicationStatusChanged(index, status) => {
                 self.job_app_status = Some(status);
                 self.job_app_status_index = Some(index);
+                Task::none()
+            }
+            Message::PickJobApplicationApplied => {
+                self.pick_job_app_applied = true;
+                Task::none()
+            }
+            Message::JobApplicationAppliedChanged(date) => {
+                self.job_app_applied = Some(date);
+                self.pick_job_app_applied = false;
+                Task::none()
+            }
+            Message::PickJobApplicationResponded => {
+                self.pick_job_app_responded = true;
+                Task::none()
+            }
+            Message::JobApplicationRespondedChanged(date) => {
+                self.job_app_responded = Some(date);
+                self.pick_job_app_responded = false;
+                Task::none()
+            }
+            Message::CancelJobApplicationPickers => {
+                self.pick_job_app_applied = false;
+                self.pick_job_app_responded = false;
                 Task::none()
             }
             // Event
@@ -747,12 +854,12 @@ impl JobHunter {
                                     let apply_msg: Message;
                                     match app_id {
                                         Some(id) => {
-                                            apply_text = "Application";
+                                            apply_text = "Edit App";
                                             apply_msg = Message::ShowEditApplicationModal(id)
                                         },
                                         None => {
-                                            apply_text = "Application";
-                                            apply_msg = Message::ShowCreateApplicationModal;
+                                            apply_text = "New App";
+                                            apply_msg = Message::ShowCreateApplicationModal(job_post.id);
                                         },
                                     };
                                     let dropdown = DropDown::new(

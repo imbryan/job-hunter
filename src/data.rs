@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use include_dir::{include_dir, Dir};
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use rusqlite_migration::Migrations;
 
 pub fn connect() -> Connection {
@@ -15,6 +15,10 @@ pub fn migrate(conn: &mut Connection) {
     let migrations = Migrations::from_directory(&MIGRATIONS_DIR).unwrap();
     migrations.to_latest(conn).unwrap();
     println!("Migrations are up-to-date.");
+}
+
+pub fn timestamp_to_utc(ts: Option<i64>) -> Option<DateTime<Utc>> {
+    ts.map(|ts| DateTime::from_timestamp(ts, 0))?
 }
 
 #[derive(Debug, Clone)]
@@ -29,9 +33,9 @@ impl Company {
         conn.prepare("SELECT * FROM company")?
             .query_map([], |row| {
             Ok(Company {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                careers_url: row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "".to_string()),
+                id: row.get("id")?,
+                name: row.get("name")?,
+                careers_url: row.get::<_, Option<String>>("careers_url")?.unwrap_or_else(|| "".to_string()),
             })
         })?
         .collect()
@@ -42,9 +46,9 @@ impl Company {
         conn.prepare(sql)?
             .query_row([id], |row| {
                 Ok(Company {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    careers_url: row.get(2)?,
+                    id: row.get("id")?,
+                    name: row.get("name")?,
+                    careers_url: row.get("careers_url")?,
                 })
             })
     }
@@ -98,27 +102,27 @@ impl JobPost {
             date_posted, date_retrieved, job_title FROM job_post";
         conn.prepare(sql)?
             .query_map([], |row| {
-                let location_type_str: String = row.get(3)?;
+                let location_type_str: String = row.get("location_type")?;
                 let location_type = match JobPostLocationType::from_str(&location_type_str) {
                     Ok(variant) => variant,
                     Err(_) => panic!(),
                 };
-                let date_posted_timestamp = DateTime::from_timestamp(row.get(9)?, 0);
-                let date_retrieved_timestamp = DateTime::from_timestamp(row.get(10)?, 0).unwrap();
+                let posted: Option<i64> = row.get("date_posted")?;
+                let date_retrieved_timestamp = DateTime::from_timestamp(row.get("date_retrieved")?, 0).unwrap();
 
                 Ok(JobPost {
-                    id: row.get(0)?,
-                    company_id: row.get(1)?,
-                    location: row.get(2)?,
+                    id: row.get("id")?,
+                    company_id: row.get("company_id")?,
+                    location: row.get("location")?,
                     location_type: location_type,
-                    url: row.get(4)?,
-                    min_yoe: row.get(5)?,
-                    max_yoe: row.get(6)?,
-                    min_pay_cents: row.get(7)?,
-                    max_pay_cents: row.get(8)?,
-                    date_posted: date_posted_timestamp,
+                    url: row.get("url")?,
+                    min_yoe: row.get("min_yoe")?,
+                    max_yoe: row.get("max_yoe")?,
+                    min_pay_cents: row.get("min_pay_cents")?,
+                    max_pay_cents: row.get("max_pay_cents")?,
+                    date_posted: timestamp_to_utc(posted),
                     date_retrieved: date_retrieved_timestamp,
-                    job_title: row.get(11)?,
+                    job_title: row.get("job_title")?,
                 })
             })?
             .collect()
@@ -169,23 +173,42 @@ impl JobApplication {
         let sql = "SELECT * FROM job_application WHERE id = ?";
         conn.prepare(sql)?
             .query_row([id], |row| {
-                let status_str: String = row.get(2)?;
+                let status_str: String = row.get("status")?;
                 let status = match JobApplicationStatus::from_str(&status_str) {
                     Ok(variant) => variant,
                     Err(_) => panic!(),
                 };
                 
-                let date_applied_timestamp = DateTime::from_timestamp(row.get(3)?, 0);
-                let date_responded_timestamp = DateTime::from_timestamp(row.get(4)?, 0);
+                let applied: Option<i64> = row.get("date_applied")?;
+                let responded: Option<i64> = row.get("date_responded")?;
 
                 Ok(JobApplication {
-                    id: row.get(0)?,
-                    job_post_id: row.get(1)?,
+                    id: row.get("id")?,
+                    job_post_id: row.get("job_post_id")?,
                     status: status,
-                    date_applied: date_applied_timestamp,
-                    date_responded: date_responded_timestamp,
+                    date_applied: timestamp_to_utc(applied),
+                    date_responded: timestamp_to_utc(responded),
                 })
             })
+    }
+
+    pub fn create(conn: &Connection, application: Self) -> rusqlite::Result<()> {
+        let sql = "INSERT INTO job_application (status, date_applied, date_responded, job_post_id) VALUES (?, ?, ?, ?)";
+        let applied = match application.date_applied {
+            Some(date) => Some(date.timestamp()),
+            None => None,
+        };
+        let responded = match application.date_responded {
+            Some(date) => Some(date.timestamp()),
+            None => None,
+        };
+        conn.execute(sql, params![
+            application.status.name(), 
+            applied, 
+            responded, 
+            application.job_post_id,
+        ])?;
+        Ok(())
     }
 }
 
