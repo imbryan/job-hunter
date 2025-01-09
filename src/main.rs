@@ -72,6 +72,8 @@ pub enum Message {
     // JobApplication
     CreateApplication,
     EditApplication,
+    // JobPost
+    DeleteJobPost(i32),
     // Dropdown
     ToggleCompanyDropdown(i32),
     ToggleJobDropdown(i32),
@@ -498,6 +500,11 @@ impl JobHunter {
                 Task::none()
             }
             // Job Post
+            Message::DeleteJobPost(id) => {
+                let _ = JobPost::delete(&self.db, id);
+                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                Task::none()
+            }
             Message::ToggleJobDropdown(id) => {
                 let current_val = match self.job_dropdowns.get(&id) {
                     Some(&status) => status,
@@ -682,7 +689,7 @@ impl JobHunter {
                                             button(text("Exclude"))
                                                 .into(),
                                             button(text("Delete"))
-                                                .on_press(Message::DeleteCompany(company_id))
+                                                .on_press(Message::DeleteCompany(company_id)) // TODO warning / confirmation
                                                 .into(),
                                         ])
                                         .spacing(5),
@@ -893,7 +900,8 @@ impl JobHunter {
                                                 .into(),
                                             button(text("Edit"))
                                                 .into(),
-                                            button(text("Delete"))
+                                            button(text("Delete")) // TODO warning/confirmation
+                                                .on_press(Message::DeleteJobPost(job_post.id))
                                                 .into(),
                                         ])
                                         .spacing(5),

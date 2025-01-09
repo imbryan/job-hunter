@@ -140,6 +140,19 @@ impl JobPost {
             })?
             .collect()
     }
+
+    pub fn cascade_applications(conn: &Connection, id: i32) -> rusqlite::Result<()> {
+        let sql = "DELETE FROM job_application where job_post_id = ?";
+        conn.execute(sql, [id])?;
+        Ok(())
+    }
+
+    pub fn delete(conn: &Connection, id: i32) -> rusqlite::Result<()> {
+        JobPost::cascade_applications(conn, id).expect("Failed to delete job applications");
+        let sql = "DELETE FROM job_post WHERE id = ?";
+        conn.execute(sql, [id])?;
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
