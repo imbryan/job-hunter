@@ -34,6 +34,34 @@ pub fn get_iced_date(date: Option<chrono::DateTime<Utc>>) -> Option<iced_aw::dat
     })
 }
 
+pub fn get_pay_i64(s: &str) -> Result<i64, String> {
+    if let Ok(num) = s.parse::<f64>() {
+        return Ok((num * 100.0).round() as i64);
+    }
+
+    Err("Invalid input string".to_string())
+}
+
+pub fn get_pay_str(num: Option<i64>) -> String {
+    match num {
+        Some(num) => format!("{:.2}", num as f64 / 100.0),
+        None => "".to_string()
+    }
+}
+
+pub fn opt_str_from_db(str: Option<String>) -> Option<String> {
+    match str {
+        Some(str) => {
+            if str.is_empty() {
+                None
+            } else {
+                Some(str)
+            }
+        },
+        None => None,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Company {
     pub id: i32,
@@ -92,7 +120,7 @@ pub struct CompanyAltName {
     pub name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JobPost {
     pub id: i32,
     pub company_id: i32,
@@ -106,13 +134,13 @@ pub struct JobPost {
     pub date_posted: Option<DateTime<Utc>>,
     pub date_retrieved: DateTime<Utc>,
     pub job_title: String,
+    pub benefits: Option<String>,
+    pub skills: Option<String>,
 }
 
 impl JobPost {
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        let sql = "SELECT id, company_id, location, location_type, url,
-            min_yoe, max_yoe, min_pay_cents, max_pay_cents, 
-            date_posted, date_retrieved, job_title FROM job_post";
+        let sql = "SELECT * FROM job_post";
         conn.prepare(sql)?
             .query_map([], |row| {
                 let location_type_str: String = row.get("location_type")?;
@@ -122,7 +150,6 @@ impl JobPost {
                 };
                 let posted: Option<i64> = row.get("date_posted")?;
                 let date_retrieved_timestamp = DateTime::from_timestamp(row.get("date_retrieved")?, 0).unwrap();
-
                 Ok(JobPost {
                     id: row.get("id")?,
                     company_id: row.get("company_id")?,
@@ -136,6 +163,8 @@ impl JobPost {
                     date_posted: timestamp_to_utc(posted),
                     date_retrieved: date_retrieved_timestamp,
                     job_title: row.get("job_title")?,
+                    benefits: opt_str_from_db(row.get::<&str, Option<String>>("benefits")?),
+                    skills: opt_str_from_db(row.get::<&str, Option<String>>("skills")?),
                 })
             })?
             .collect()
@@ -153,13 +182,55 @@ impl JobPost {
         conn.execute(sql, [id])?;
         Ok(())
     }
+
+    pub fn update(conn: &Connection, post: Self) -> rusqlite::Result<()> {
+        let posted = match post.date_posted {
+            Some(date) => Some(date.timestamp()),
+            None => None,
+        };
+        let sql = "UPDATE job_post SET location = ?, location_type = ?,
+        url = ?, min_yoe = ?, max_yoe = ?, min_pay_cents = ?, max_pay_cents = ?,
+        date_posted = ?, job_title = ?, benefits = ?, skills = ? 
+        WHERE id = ?";
+        conn.execute(sql, params![
+            post.location,
+            post.location_type.name(),
+            post.url,
+            post.min_yoe,
+            post.max_yoe,
+            post.min_pay_cents,
+            post.max_pay_cents,
+            posted,
+            post.job_title,
+            post.benefits,
+            post.skills,
+            post.id,
+        ])?;
+        Ok(())
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum JobPostLocationType {
     Onsite,
     Hybrid,
     Remote,
+}
+
+impl JobPostLocationType {
+    pub const ALL: [JobPostLocationType; 3] = [
+        JobPostLocationType::Onsite,
+        JobPostLocationType::Hybrid,
+        JobPostLocationType::Remote,
+    ];
+
+    pub fn name(&self) -> String {
+        match self {
+            JobPostLocationType::Onsite => "Onsite".to_owned(),
+            JobPostLocationType::Hybrid => "Hybrid".to_owned(),
+            JobPostLocationType::Remote => "Remote".to_owned(),
+        }
+    }
 }
 
 impl FromStr for JobPostLocationType {
