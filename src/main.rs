@@ -306,7 +306,7 @@ impl JobHunter {
             Font::default(),
         )
             // .width(Length::Shrink)
-            .height(Length::Fixed(75.0));
+            .height(Length::Fixed(135.0));
 
         let applied_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> = button(text("Pick")).on_press(Message::PickJobApplicationApplied);
         let date_applied_picker = date_picker(
@@ -338,11 +338,6 @@ impl JobHunter {
             column![
                 text(title).size(24),
                 column![
-                    column![
-                        text("Status").size(12),
-                        job_status_select,
-                    ]
-                        .spacing(5),
                     row![
                         column![
                             text("Date Applied").size(12),
@@ -369,6 +364,11 @@ impl JobHunter {
                     ]
                         .spacing(15)
                         .width(Fill),
+                    column![
+                        text("Status").size(12),
+                        job_status_select,
+                    ]
+                        .spacing(5),
                     row![
                         container(button(text("Save")).on_press(submit_message.clone()))
                         .width(Fill)
@@ -376,7 +376,7 @@ impl JobHunter {
                         button(text("Cancel")).on_press(Message::HideModal)
                     ]
                     .spacing(10)
-                    .width(Fill)
+                    .width(Fill),
                 ]
                 .spacing(10),
             ]
@@ -434,7 +434,7 @@ impl JobHunter {
             self.location_type_index,
             Font::default(),
         )
-            .height(Length::Fixed(50.0));
+            .height(Length::Fixed(70.0));
         container(
             column![
                 text(title).size(24),
@@ -447,29 +447,6 @@ impl JobHunter {
                         ]
                             .width(Length::FillPortion(1))
                             .spacing(5),
-                        // URL
-                        column![
-                            text("Job URL").size(12),
-                            text_input("", &self.url)
-                                .on_input(Message::JobURLChanged)
-                                .on_submit(submit_message.clone())
-                                .padding(5)
-                        ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5)
-                    ]
-                        .spacing(15),
-                    row![
-                        // Title field
-                        column![
-                            text("Job Title").size(12),
-                            text_input("", &self.job_title)
-                                .on_input(Message::JobTitleChanged)
-                                .on_submit(submit_message.clone())
-                                .padding(5),
-                        ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
                         // Date posted
                         column![
                             text("Date Posted").size(12),
@@ -479,6 +456,29 @@ impl JobHunter {
                             ]
                                 .spacing(10)
                                 .align_y(Alignment::Center),
+                        ]
+                            .width(Length::FillPortion(1))
+                            .spacing(5),
+                    ]
+                        .spacing(15),
+                    row![
+                        // Title field
+                        column![
+                            text("Job Title").size(12),
+                            text_input("", &self.job_title)
+                            .on_input(Message::JobTitleChanged)
+                            .on_submit(submit_message.clone())
+                            .padding(5),
+                            ]
+                            .width(Length::FillPortion(1))
+                            .spacing(5),
+                        // URL
+                        column![
+                            text("Job URL").size(12),
+                            text_input("", &self.url)
+                                .on_input(Message::JobURLChanged)
+                                .on_submit(submit_message.clone())
+                                .padding(5)
                         ]
                             .width(Length::FillPortion(1))
                             .spacing(5),
