@@ -17,6 +17,8 @@ pub fn migrate(conn: &mut Connection) {
     println!("Migrations are up-to-date.");
 }
 
+/* Data conversion and formatting */
+
 pub fn timestamp_to_utc(ts: Option<i64>) -> Option<DateTime<Utc>> {
     ts.map(|ts| DateTime::from_timestamp(ts, 0))?
 }
@@ -61,6 +63,21 @@ pub fn opt_str_from_db(str: Option<String>) -> Option<String> {
         None => None,
     }
 }
+
+pub fn format_comma_separated(str: String) -> String {
+    str.split(',')
+        .map(|s| {
+            let mut chars = s.trim().chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                None => String::new(),
+            }
+        })
+            .collect::<Vec<String>>()
+            .join(", ")
+}
+
+/* Data models */
 
 #[derive(Debug, Clone)]
 pub struct Company {

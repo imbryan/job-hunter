@@ -12,7 +12,7 @@ use iced_aw::{date_picker::Date, drop_down, DropDown, helpers::badge, date_picke
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
-use self::data::{Company, get_iced_date, get_pay_i64, get_pay_str, get_utc, JobApplication, JobApplicationStatus, JobPost, JobPostLocationType, migrate};
+use self::data::{Company, format_comma_separated, get_iced_date, get_pay_i64, get_pay_str, get_utc, JobApplication, JobApplicationStatus, JobPost, JobPostLocationType, migrate};
 
 pub fn main() -> iced::Result {
     iced::daemon(JobHunter::title, JobHunter::update, JobHunter::view)
@@ -1242,7 +1242,7 @@ impl JobHunter {
                                         (true, true) => format!("${} - ${}", get_pay_str(Some(*min_pay)), get_pay_str(Some(*max_pay))),
                                         (false, true) => format!("${}+", get_pay_str(Some(*min_pay))),
                                         (true, false) => format!("${}", get_pay_str(Some(*max_pay))),
-                                        _ => "No salary information".to_string(),
+                                        _ => "No salary specified".to_string(),
                                     };
 
                                     let app_sql = "SELECT id FROM job_application WHERE job_post_id = ?";
@@ -1308,6 +1308,15 @@ impl JobHunter {
                                     .width(Fill)
                                     .alignment(drop_down::Alignment::Bottom)
                                     .on_dismiss(Message::ToggleJobDropdown(job_post.id));
+
+                                    let skills_text = match &job_post.skills {
+                                        Some(skills) => format_comma_separated(skills.to_string()),
+                                        None => "No skills specified".to_string(),
+                                    };
+                                    let benefits_text = match &job_post.benefits {
+                                        Some(benefits) => format_comma_separated(benefits.to_string()),
+                                        None => "No benefits specified".to_string(),
+                                    };
                                     
                                     container(
                                         row![
@@ -1327,14 +1336,14 @@ impl JobHunter {
                                             column![
                                                 text("Qualifications").size(12),
                                                 text(yoe_text),
-                                                text(job_post.skills.clone().unwrap_or("No skills specified".to_string())),
+                                                text(skills_text),
                                             ]
                                                 .spacing(5)
                                                 .width(Length::FillPortion(2)),
                                             column![
                                                 text("Compensation").size(12),
                                                 text(pay_text),
-                                                text(job_post.benefits.clone().unwrap_or("Unknown benefits".to_string())),
+                                                text(benefits_text),
                                             ]
                                                 .spacing(5)
                                                 .width(Length::FillPortion(2)),
