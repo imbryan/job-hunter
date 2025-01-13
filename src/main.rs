@@ -451,9 +451,14 @@ impl JobHunter {
             Message::CancelJobPostedPicker,
             Message::JobPostedChanged,
         );
-        let posted = match &self.job_posted {
-            Some(date) => format!("{}/{}/{}", date.month, date.day, date.year),
-            None => "None".to_string(),
+        let mut posted_spacing = 0;
+        let posted: Element<'_, Message, Theme, iced::Renderer> = match &self.job_posted {
+            Some(date) => {
+                posted_spacing = 10;
+                let naive = NaiveDate::from_ymd_opt(date.year, date.month, date.day).unwrap();
+                text(naive.format("%B %d, %Y").to_string()).into()
+            },
+            None => column![].into(),
         };
         let loc_type_select: SelectionList<'_, JobPostLocationType, Message, Theme, iced::Renderer> = SelectionList::new_with(
             &JobPostLocationType::ALL,
@@ -482,10 +487,10 @@ impl JobHunter {
                         column![
                             text("Date Posted").size(12),
                             row![
-                                text(posted),
+                                posted,
                                 job_posted_picker,
                             ]
-                                .spacing(10)
+                                .spacing(posted_spacing)
                                 .align_y(Alignment::Center),
                         ]
                             .width(Length::FillPortion(1))
@@ -1330,7 +1335,7 @@ impl JobHunter {
                                     let yoe_text = match (*max_yoe > -1, *min_yoe > -1) {
                                         (true, true) => format!("{} - {} years", min_yoe, max_yoe),
                                         (false, true) => format!("{}+ years", min_yoe),
-                                        _ => "No required years found".to_string(),
+                                        _ => "No YOE found".to_string(),
                                     };
 
                                     let min_pay = &job_post.min_pay_cents.unwrap_or(-1);

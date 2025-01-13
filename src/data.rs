@@ -88,7 +88,7 @@ pub struct Company {
 
 impl Company {
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        conn.prepare("SELECT * FROM company")?
+        conn.prepare("SELECT * FROM company ORDER BY name ASC")?
             .query_map([], |row| {
             Ok(Company {
                 id: row.get("id")?,
@@ -175,7 +175,7 @@ pub struct JobPost {
 
 impl JobPost {
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        let sql = "SELECT * FROM job_post";
+        let sql = "SELECT * FROM job_post ORDER BY date_posted DESC, date_retrieved DESC";
         conn.prepare(sql)?
             .query_map([], |row| {
                 let location_type_str: String = row.get("location_type")?;
