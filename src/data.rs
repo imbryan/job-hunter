@@ -79,7 +79,7 @@ pub fn format_comma_separated(str: String) -> String {
 
 /* Data models */
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Company {
     pub id: i32,
     pub name: String,
@@ -111,6 +111,18 @@ impl Company {
             })
     }
 
+    pub fn list_by_name(conn: &Connection, name: String) -> rusqlite::Result<Vec<Self>> {
+        conn.prepare("SELECT * FROM company WHERE name LIKE '%' || ? || '%'")?
+            .query_map([name], |row| {
+                Ok(Company {
+                    id: row.get("id")?,
+                    name: row.get("name")?,
+                    careers_url: row.get("careers_url")?,
+                })
+            })?
+            .collect()
+    }
+
     pub fn create(conn: &Connection, name: String, careers_url: String) -> rusqlite::Result<()> {
         let sql = "INSERT INTO company (name, careers_url) VALUES (?, ?)";
         conn.execute(sql, [name, careers_url])?;
@@ -127,6 +139,12 @@ impl Company {
         let sql = "DELETE FROM company WHERE id = ?";
         conn.execute(sql, [id])?;
         Ok(())
+    }
+}
+
+impl Display for Company {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
@@ -222,6 +240,33 @@ impl JobPost {
             post.benefits,
             post.skills,
             post.id,
+        ])?;
+        Ok(())
+    }
+
+    pub fn create(conn: &Connection, post: Self) -> rusqlite::Result<()> {
+        let posted = match post.date_posted {
+            Some(date) => Some(date.timestamp()),
+            None => None,
+        };
+        let sql = "INSERT INTO job_post
+            (location, location_type, url, min_yoe, max_yoe, min_pay_cents, max_pay_cents,
+            date_posted, job_title, benefits, skills, date_retrieved, company_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        conn.execute(sql, params![
+            post.location,
+            post.location_type.name(),
+            post.url,
+            post.min_yoe,
+            post.max_yoe,
+            post.min_pay_cents,
+            post.max_pay_cents,
+            posted,
+            post.job_title,
+            post.benefits,
+            post.skills,
+            post.date_retrieved.timestamp(),
+            post.company_id,
         ])?;
         Ok(())
     }

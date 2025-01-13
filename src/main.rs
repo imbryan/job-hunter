@@ -67,6 +67,10 @@ pub struct JobHunter {
     location_type_index: Option<usize>,
     url: String,
     skills: String,
+    job_post_company_name: String,
+    job_post_company_results: Vec<Company>,
+    job_post_company: Option<Company>,
+    job_post_company_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +92,7 @@ pub enum Message {
     // JobPost
     DeleteJobPost(i32),
     EditJobPost,
+    CreateJobPost,
     // Dropdown
     ToggleCompanyDropdown(i32),
     ToggleJobDropdown(i32),
@@ -128,6 +133,9 @@ pub enum Message {
     LocationTypeChanged(usize, JobPostLocationType),
     JobURLChanged(String),
     SkillsChanged(String),
+    ShowAddJobPostModal,
+    JobPostCompanyNameChanged(String),
+    JobPostCompanyChanged(usize, Company),
 }
 
 pub struct Window {
@@ -152,6 +160,7 @@ pub enum Modal {
     EditApplicationModal,
     CreateJobPostModal,
     EditJobPostModal,
+    AddJobPostModal,
 }
 
 // https://github.com/iced-rs/iced/blob/latest/examples/modal/src/main.rs
@@ -230,6 +239,10 @@ impl JobHunter {
                 location_type_index: None,
                 skills: "".to_string(),
                 url: "".to_string(),
+                job_post_company_name: "".to_string(),
+                job_post_company_results: Vec::new(),
+                job_post_company: None,
+                job_post_company_index: None,
             },
             open.map(Message::WindowOpened)
         )
@@ -388,7 +401,7 @@ impl JobHunter {
         .into()
     }
 
-    fn job_post_modal<'a>(&self, submit_message: Message) -> Element<'a, Message> {
+    fn job_post_modal<'a>(&'a self, submit_message: Message) -> Element<'a, Message> {
         let title = match &self.job_post_id {
             Some(_) => "Edit Job Post",
             None => "New Job Post",
@@ -400,8 +413,25 @@ impl JobHunter {
                     .into()
             },
             None => {
-                text_input("", "")
+                text_input("", &self.job_post_company_name)
+                    .on_input(Message::JobPostCompanyNameChanged)
                     .padding(5)
+                    .into()
+            }
+        };
+        let company_select: Element<'_, Message, Theme, iced::Renderer> = match &self.job_post_company_results.is_empty() {
+            true => horizontal_space().into(),
+            false => {
+                SelectionList::new_with(
+                    &self.job_post_company_results,
+                    Message::JobPostCompanyChanged,
+                    12.0,
+                    5.0,
+                    style::selection_list::primary,
+                    self.job_post_company_index,
+                    Font::default()
+                )
+                    .height(Length::Fixed(70.0))
                     .into()
             }
         };
@@ -444,6 +474,7 @@ impl JobHunter {
                         column![
                             text("Company").size(12),
                             company_element,
+                            company_select,
                         ]
                             .width(Length::FillPortion(1))
                             .spacing(5),
@@ -619,6 +650,10 @@ impl JobHunter {
         self.location_type_index = None;
         self.skills = "".to_string();
         self.url = "".to_string();
+        self.job_post_company_name = "".to_string();
+        self.job_post_company_results = Vec::new();
+        self.job_post_company = None;
+        self.job_post_company_index = None;
     }
 
     fn reset_filters(&mut self) {
@@ -636,7 +671,7 @@ impl JobHunter {
     
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            // Window
+            /* Window */
             Message::OpenWindow => { 
                 let Some(last_window) = self.windows.keys().last() else {
                     return Task::none()
@@ -676,7 +711,7 @@ impl JobHunter {
                     Task::none()
                 }
             }
-            // Company
+            /* Company */
             Message::TrackNewCompany => {
                 if self.company_name == "" || self.careers_url == "" { // hmm...
                     return Task::none() // TODO ideally there would be visual feedback
@@ -725,7 +760,7 @@ impl JobHunter {
                 self.hide_modal();
                 Task::none()
             }
-            // Job Application
+            /* Job Application */
             Message::CreateApplication => {
                 if self.job_app_status == None {
                     return Task::none() // TODO feedback
@@ -760,7 +795,7 @@ impl JobHunter {
                 self.hide_modal();
                 Task::none()
             }
-            // Job Post
+            /* Job Post */
             Message::DeleteJobPost(id) => {
                 let _ = JobPost::delete(&self.db, id);
                 self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
@@ -808,7 +843,41 @@ impl JobHunter {
                 self.hide_modal();
                 Task::none()
             }
-            // Filter
+            Message::CreateJobPost => {
+                if self.location_type == None || self.location == "" ||
+                    self.job_title == "" || self.url == "" || self.job_post_company == None {
+                    return Task::none() // TODO feedback
+                }
+                let min_pay = match self.min_pay.as_str() {
+                    "" => None,
+                    _ => Some(get_pay_i64(&self.min_pay).unwrap()),
+                };
+                let max_pay = match self.max_pay.as_str() {
+                    "" => None,
+                    _ => Some(get_pay_i64(&self.max_pay).unwrap()),
+                };
+                let post = JobPost {
+                    id: -1,
+                    company_id: self.job_post_company.clone().unwrap().id,
+                    location: self.location.clone(),
+                    location_type: self.location_type.clone().unwrap(),
+                    url: self.url.clone(),
+                    min_yoe: self.min_yoe,
+                    max_yoe: self.max_yoe,
+                    min_pay_cents: min_pay,
+                    max_pay_cents: max_pay,
+                    date_posted: get_utc(self.job_posted),
+                    date_retrieved: Utc::now(),
+                    job_title: self.job_title.clone(),
+                    benefits: Some(self.benefits.clone()),
+                    skills: Some(self.skills.clone()),
+                };
+                let _ = JobPost::create(&self.db, post).expect("Failed to create job post");
+                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                self.hide_modal();
+                Task::none()
+            }
+            /* Filter */
             Message::FilterMinYOEChanged(num) => {
                 self.filter_min_yoe = num;
                 Task::none()
@@ -841,12 +910,12 @@ impl JobHunter {
                 self.reset_filters();
                 Task::none()
             }
-            // Hide Modal
+            /* Hide Modal */
             Message::HideModal => {
                 self.hide_modal();
                 Task::none()
             }
-            // Show modal
+            /* Show modal */
             Message::ShowCreateCompanyModal => {
                 self.modal = Modal::CreateCompanyModal;
                 focus_next()
@@ -900,7 +969,11 @@ impl JobHunter {
                 self.modal = Modal::EditJobPostModal;
                 focus_next()
             }
-            // Advanced modal fields
+            Message::ShowAddJobPostModal => {
+                self.modal = Modal::AddJobPostModal;
+                focus_next()
+            }
+            /* Advanced modal fields */ 
             Message::PickJobApplicationApplied => {
                 self.pick_job_app_applied = true;
                 Task::none()
@@ -922,7 +995,7 @@ impl JobHunter {
                 self.pick_job_posted = false;
                 Task::none()
             }
-            // Modal input
+            /* Modal input */
             Message::CompanyNameChanged(name) => {
                 self.company_name = name; // hmm...
                 Task::none()
@@ -1008,7 +1081,17 @@ impl JobHunter {
                 self.skills = skills;
                 Task::none()
             }
-            // Event
+            Message::JobPostCompanyNameChanged(company_name) => {
+                self.job_post_company_name = company_name.clone();
+                self.job_post_company_results = Company::list_by_name(&self.db, company_name.clone()).expect("Failed to get companies");
+                Task::none()
+            }
+            Message::JobPostCompanyChanged(index, company) => {
+                self.job_post_company = Some(company);
+                self.job_post_company_index = Some(index);
+                Task::none()
+            }
+            /* Event */
             Message::Event(event) => match event {
                 Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Tab), 
                     modifiers,
@@ -1178,6 +1261,15 @@ impl JobHunter {
                         ]
                         .spacing(10),
                         row![
+                            button(
+                                row![
+                                    "Add Job",
+                                    fa_icon_solid("plus").size(15.0).color(color!(255,255,255)),
+                                ]
+                                    .spacing(5)
+                                    .align_y(Alignment::Center)
+                            )
+                                .on_press(Message::ShowAddJobPostModal),
                             container(
                                 button(
                                     row![
@@ -1209,6 +1301,7 @@ impl JobHunter {
                         ]
                         .spacing(10)
                         .width(Fill)
+                        .padding(Padding::from([0, 0]).top(10))
                     ]
                     .spacing(10)
                     .width(Fill)
@@ -1226,7 +1319,11 @@ impl JobHunter {
                                         JobPostLocationType::Hybrid => style::badge::info,
                                         JobPostLocationType::Remote => style::badge::primary,
                                     };
-                                    let posted_text = format!("{}", &job_post.date_posted.unwrap().format("%m/%d/%Y"));
+                                    // let posted_text = format!("{}", &job_post.date_posted.unwrap().format("%m/%d/%Y"));
+                                    let posted_text = match &job_post.date_posted {
+                                        Some(date) => format!("{}", date.format("%m/%d/%Y")),
+                                        None => "".to_string(),
+                                    };
 
                                     let min_yoe = &job_post.min_yoe.unwrap_or(-1);
                                     let max_yoe = &job_post.max_yoe.unwrap_or(-1);
@@ -1410,6 +1507,11 @@ impl JobHunter {
                 let edit_job_post_content = self.job_post_modal(Message::EditJobPost);
 
                 modal(main_window_content, edit_job_post_content, Message::HideModal)
+            }
+            Modal::AddJobPostModal => {
+                let add_job_post_content = self.job_post_modal(Message::CreateJobPost);
+
+                modal(main_window_content, add_job_post_content, Message::HideModal)
             }
             Modal::None | _ => {
                 main_window_content.into()
