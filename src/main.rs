@@ -1094,6 +1094,7 @@ impl JobHunter {
             Message::JobPostCompanyChanged(index, company) => {
                 self.job_post_company = Some(company);
                 self.job_post_company_index = Some(index);
+                self.job_post_company_name = self.job_post_company.clone().unwrap().name;
                 Task::none()
             }
             /* Event */
