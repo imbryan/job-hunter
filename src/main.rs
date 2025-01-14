@@ -2,18 +2,30 @@ mod data;
 
 use std::collections::BTreeMap;
 
-use chrono::{Datelike, DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use clap::Parser;
-use iced::{Alignment, color, Element, Fill, Font, Length, Padding, Subscription, Task, Theme, Vector, window};
 use iced::event::Event;
 use iced::keyboard;
 use iced::keyboard::key;
-use iced::widget::{button, center, checkbox, Column, column, container, focus_next, focus_previous, horizontal_space, mouse_area, opaque, row, scrollable, stack, text, text_input};
-use iced_aw::{date_picker::Date, drop_down, DropDown, helpers::badge, date_picker, number_input, SelectionList, style};
+use iced::widget::{
+    button, center, checkbox, column, container, focus_next, focus_previous, horizontal_space,
+    mouse_area, opaque, row, scrollable, stack, text, text_input, Column,
+};
+use iced::{
+    color, window, Alignment, Element, Fill, Font, Length, Padding, Subscription, Task, Theme,
+    Vector,
+};
+use iced_aw::{
+    date_picker, date_picker::Date, drop_down, helpers::badge, number_input, style, DropDown,
+    SelectionList,
+};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
-use self::data::{Company, format_comma_separated, get_iced_date, get_pay_i64, get_pay_str, get_utc, JobApplication, JobApplicationStatus, JobPost, JobPostLocationType, migrate, opt_str_from_db};
+use self::data::{
+    format_comma_separated, get_iced_date, get_pay_i64, get_pay_str, get_utc, migrate,
+    opt_str_from_db, Company, JobApplication, JobApplicationStatus, JobPost, JobPostLocationType,
+};
 
 pub fn main() -> iced::Result {
     iced::daemon(JobHunter::title, JobHunter::update, JobHunter::view)
@@ -21,7 +33,6 @@ pub fn main() -> iced::Result {
         .subscription(JobHunter::subscription)
         .run_with(JobHunter::new)
 }
-
 
 pub struct JobHunter {
     // Window
@@ -78,8 +89,8 @@ pub struct JobHunter {
 #[derive(Debug, Clone)]
 pub enum Message {
     // Window
-    OpenWindow, 
-    WindowOpened(window::Id), 
+    OpenWindow,
+    WindowOpened(window::Id),
     WindowClosed(window::Id),
     // Event
     Event(Event),
@@ -142,16 +153,14 @@ pub enum Message {
 }
 #[derive(Parser)]
 pub struct Cli {
-    db_path: Option<std::path::PathBuf>, 
+    db_path: Option<std::path::PathBuf>,
 }
 
-pub struct Window {
-}
+pub struct Window {}
 
 impl Window {
     fn new() -> Self {
-        Self {
-        }
+        Self {}
     }
 }
 
@@ -175,7 +184,10 @@ fn modal<'a, Message>(
     base: impl Into<Element<'a, Message>>,
     content: impl Into<Element<'a, Message>>,
     on_blur: Message,
-) -> Element<'a, Message> where Message: Clone + 'a, {
+) -> Element<'a, Message>
+where
+    Message: Clone + 'a,
+{
     stack![
         base.into(),
         opaque(
@@ -205,7 +217,7 @@ impl JobHunter {
             Some(path) => path,
             None => std::path::PathBuf::from("jobhunter.db"),
         };
-        
+
         let mut conn = data::connect(db_path);
         migrate(&mut conn);
 
@@ -258,14 +270,14 @@ impl JobHunter {
                 job_post_company: None,
                 job_post_company_index: None,
             },
-            open.map(Message::WindowOpened)
+            open.map(Message::WindowOpened),
         )
     }
 
     fn title(&self, id: window::Id) -> String {
         String::from("Job Hunter")
     }
-    
+
     fn theme(&self, id: window::Id) -> Theme {
         Theme::default()
     }
@@ -300,8 +312,8 @@ impl JobHunter {
                     .spacing(5),
                     row![
                         container(button(text("Save")).on_press(submit_message.clone()))
-                        .width(Fill)
-                        .align_x(Alignment::End),
+                            .width(Fill)
+                            .align_x(Alignment::End),
                         button(text("Cancel")).on_press(Message::HideModal)
                     ]
                     .spacing(10)
@@ -309,7 +321,7 @@ impl JobHunter {
                 ]
                 .spacing(10),
             ]
-            .spacing(20)
+            .spacing(20),
         )
         .width(300)
         .padding(10)
@@ -320,10 +332,16 @@ impl JobHunter {
     fn job_app_modal<'a>(&self, submit_message: Message) -> Element<'a, Message> {
         let title = match &self.job_app_id {
             Some(_) => "Edit Application",
-            None => "New Application"
+            None => "New Application",
         };
 
-        let job_status_select: SelectionList<'_, JobApplicationStatus, Message, Theme, iced::Renderer> = SelectionList::new_with(
+        let job_status_select: SelectionList<
+            '_,
+            JobApplicationStatus,
+            Message,
+            Theme,
+            iced::Renderer,
+        > = SelectionList::new_with(
             &JobApplicationStatus::ALL,
             Message::JobApplicationStatusChanged,
             12.0,
@@ -332,10 +350,11 @@ impl JobHunter {
             self.job_app_status_index,
             Font::default(),
         )
-            // .width(Length::Shrink)
-            .height(Length::Fixed(135.0));
+        // .width(Length::Shrink)
+        .height(Length::Fixed(135.0));
 
-        let applied_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> = button(text("Pick")).on_press(Message::PickJobApplicationApplied);
+        let applied_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> =
+            button(text("Pick")).on_press(Message::PickJobApplicationApplied);
         let date_applied_picker = date_picker(
             self.pick_job_app_applied,
             self.job_app_applied.unwrap_or(Date::today()),
@@ -348,7 +367,8 @@ impl JobHunter {
             None => "None".to_string(),
         };
 
-        let responded_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> = button(text("Pick")).on_press(Message::PickJobApplicationResponded);
+        let responded_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> =
+            button(text("Pick")).on_press(Message::PickJobApplicationResponded);
         let date_responded_picker = date_picker(
             self.pick_job_app_responded,
             self.job_app_responded.unwrap_or(Date::today()),
@@ -368,38 +388,28 @@ impl JobHunter {
                     row![
                         column![
                             text("Date Applied").size(12),
-                            row![
-                                text(applied),
-                                date_applied_picker,
-                            ]
+                            row![text(applied), date_applied_picker,]
                                 .spacing(10)
                                 .align_y(Alignment::Center),
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                         column![
                             text("Date Responded").size(12),
-                            row![
-                                text(responded),
-                                date_responded_picker,
-                            ]
+                            row![text(responded), date_responded_picker,]
                                 .spacing(10)
                                 .align_y(Alignment::Center),
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
-                    ]
-                        .spacing(15)
-                        .width(Fill),
-                    column![
-                        text("Status").size(12),
-                        job_status_select,
-                    ]
+                        .width(Length::FillPortion(1))
                         .spacing(5),
+                    ]
+                    .spacing(15)
+                    .width(Fill),
+                    column![text("Status").size(12), job_status_select,].spacing(5),
                     row![
                         container(button(text("Save")).on_press(submit_message.clone()))
-                        .width(Fill)
-                        .align_x(Alignment::End),
+                            .width(Fill)
+                            .align_x(Alignment::End),
                         button(text("Cancel")).on_press(Message::HideModal)
                     ]
                     .spacing(10)
@@ -407,7 +417,7 @@ impl JobHunter {
                 ]
                 .spacing(10),
             ]
-            .spacing(20)
+            .spacing(20),
         )
         .width(300)
         .padding(10)
@@ -420,35 +430,29 @@ impl JobHunter {
             Some(_) => "Edit Job Post",
             None => "New Job Post",
         };
-        // let company name = 
+        // let company name =
         let company_element: Element<'_, Message, Theme, iced::Renderer> = match &self.job_post_id {
-            Some(_) => {
-                text(self.company_name.clone())
-                    .into()
-            },
-            None => {
-                text_input("", &self.job_post_company_name)
-                    .on_input(Message::JobPostCompanyNameChanged)
-                    .padding(5)
-                    .into()
-            }
+            Some(_) => text(self.company_name.clone()).into(),
+            None => text_input("", &self.job_post_company_name)
+                .on_input(Message::JobPostCompanyNameChanged)
+                .padding(5)
+                .into(),
         };
-        let company_select: Element<'_, Message, Theme, iced::Renderer> = match &self.job_post_company_results.is_empty() {
-            true => horizontal_space().into(),
-            false => {
-                SelectionList::new_with(
+        let company_select: Element<'_, Message, Theme, iced::Renderer> =
+            match &self.job_post_company_results.is_empty() {
+                true => horizontal_space().into(),
+                false => SelectionList::new_with(
                     &self.job_post_company_results,
                     Message::JobPostCompanyChanged,
                     12.0,
                     5.0,
                     style::selection_list::primary,
                     self.job_post_company_index,
-                    Font::default()
+                    Font::default(),
                 )
-                    .height(Length::Fixed(70.0))
-                    .into()
-            }
-        };
+                .height(Length::Fixed(70.0))
+                .into(),
+            };
         let min_yoe = match self.min_yoe {
             Some(num) => num.to_string(),
             None => "".to_string(),
@@ -457,7 +461,8 @@ impl JobHunter {
             Some(num) => num.to_string(),
             None => "".to_string(),
         };
-        let posted_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> = button(text("Pick")).on_press(Message::PickJobPosted);
+        let posted_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> =
+            button(text("Pick")).on_press(Message::PickJobPosted);
         let job_posted_picker = date_picker(
             self.pick_job_posted,
             self.job_posted.unwrap_or(Date::today()),
@@ -471,10 +476,16 @@ impl JobHunter {
                 posted_spacing = 10;
                 let naive = NaiveDate::from_ymd_opt(date.year, date.month, date.day).unwrap();
                 text(naive.format("%B %d, %Y").to_string()).into()
-            },
+            }
             None => column![].into(),
         };
-        let loc_type_select: SelectionList<'_, JobPostLocationType, Message, Theme, iced::Renderer> = SelectionList::new_with(
+        let loc_type_select: SelectionList<
+            '_,
+            JobPostLocationType,
+            Message,
+            Theme,
+            iced::Renderer,
+        > = SelectionList::new_with(
             &JobPostLocationType::ALL,
             Message::LocationTypeChanged,
             12.0,
@@ -483,45 +494,38 @@ impl JobHunter {
             self.location_type_index,
             Font::default(),
         )
-            .height(Length::Fixed(70.0));
+        .height(Length::Fixed(70.0));
         container(
             column![
                 text(title).size(24),
                 column![
                     row![
                         // Company name
-                        column![
-                            text("Company").size(12),
-                            company_element,
-                            company_select,
-                        ]
+                        column![text("Company").size(12), company_element, company_select,]
                             .width(Length::FillPortion(1))
                             .spacing(5),
                         // Date posted
                         column![
                             text("Date Posted").size(12),
-                            row![
-                                posted,
-                                job_posted_picker,
-                            ]
+                            row![posted, job_posted_picker,]
                                 .spacing(posted_spacing)
                                 .align_y(Alignment::Center),
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                     ]
-                        .spacing(15),
+                    .spacing(15),
                     row![
                         // Title field
                         column![
                             text("Job Title").size(12),
                             text_input("", &self.job_title)
-                            .on_input(Message::JobTitleChanged)
-                            .on_submit(submit_message.clone())
-                            .padding(5),
-                            ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                                .on_input(Message::JobTitleChanged)
+                                .on_submit(submit_message.clone())
+                                .padding(5),
+                        ]
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                         // URL
                         column![
                             text("Job URL").size(12),
@@ -530,10 +534,10 @@ impl JobHunter {
                                 .on_submit(submit_message.clone())
                                 .padding(5)
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                     ]
-                        .spacing(15),
+                    .spacing(15),
                     row![
                         // Location field
                         column![
@@ -543,18 +547,18 @@ impl JobHunter {
                                 .on_submit(submit_message.clone())
                                 .padding(5),
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                         // Location type
                         column![
                             text("Location Type").size(12),
                             loc_type_select,
-                                // .padding(5),
+                            // .padding(5),
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                     ]
-                        .spacing(15),
+                    .spacing(15),
                     row![
                         // Min years
                         column![
@@ -564,8 +568,8 @@ impl JobHunter {
                                 .on_submit(submit_message.clone())
                                 .padding(5)
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                         // Max years
                         column![
                             text("Max. Years").size(12),
@@ -574,8 +578,8 @@ impl JobHunter {
                                 .on_submit(submit_message.clone())
                                 .padding(5)
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                         // Min pay
                         column![
                             text("Min. Pay").size(12),
@@ -584,8 +588,8 @@ impl JobHunter {
                                 .on_submit(submit_message.clone())
                                 .padding(5)
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                         // Max pay
                         column![
                             text("Max. Pay").size(12),
@@ -594,22 +598,22 @@ impl JobHunter {
                                 .on_submit(submit_message.clone())
                                 .padding(5)
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                     ]
-                        .spacing(15),
+                    .spacing(15),
                     row![
                         // Skills
                         column![
-                                text("Skills").size(12),
-                                text("Comma-separated").size(10),
-                                text_input("", &self.skills)
-                                    .on_input(Message::SkillsChanged)
-                                    .on_submit(submit_message.clone())
-                                    .padding(5)
+                            text("Skills").size(12),
+                            text("Comma-separated").size(10),
+                            text_input("", &self.skills)
+                                .on_input(Message::SkillsChanged)
+                                .on_submit(submit_message.clone())
+                                .padding(5)
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                         // Benefits
                         column![
                             text("Benefits").size(12),
@@ -619,10 +623,10 @@ impl JobHunter {
                                 .on_submit(submit_message.clone())
                                 .padding(5)
                         ]
-                            .width(Length::FillPortion(1))
-                            .spacing(5),
+                        .width(Length::FillPortion(1))
+                        .spacing(5),
                     ]
-                        .spacing(15),
+                    .spacing(15),
                     // Save row
                     row![
                         container(button(text("Save")).on_press(submit_message.clone()))
@@ -630,17 +634,17 @@ impl JobHunter {
                             .align_x(Alignment::End),
                         button(text("Cancel")).on_press(Message::HideModal)
                     ]
-                        .spacing(10)
-                        .width(Fill)
-                ]
                     .spacing(10)
+                    .width(Fill)
+                ]
+                .spacing(10)
             ]
-                .spacing(5)
+            .spacing(5),
         )
-            .width(500)
-            .padding(10)
-            .style(container::rounded_box)
-            .into()
+        .width(500)
+        .padding(10)
+        .style(container::rounded_box)
+        .into()
     }
 
     fn hide_modal(&mut self) {
@@ -694,31 +698,32 @@ impl JobHunter {
             opt_str_from_db(Some(self.filter_job_title.clone())),
             opt_str_from_db(Some(self.filter_location.clone())),
             Some(self.filter_min_yoe),
-            if self.filter_max_yoe > 0 { Some(self.filter_max_yoe) } else { None },
+            if self.filter_max_yoe > 0 {
+                Some(self.filter_max_yoe)
+            } else {
+                None
+            },
             self.filter_onsite,
             self.filter_hybrid,
             self.filter_remote,
-        ).expect("Failed to filter job posts");
+        )
+        .expect("Failed to filter job posts");
     }
-    
+
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             /* Window */
-            Message::OpenWindow => { 
+            Message::OpenWindow => {
                 let Some(last_window) = self.windows.keys().last() else {
-                    return Task::none()
+                    return Task::none();
                 };
 
                 window::get_position(*last_window)
                     .then(|last_position| {
-                        let position = last_position.map_or(
-                            window::Position::Default,
-                            |last_position| {
-                                window::Position::Specific(
-                                    last_position + Vector::new(20.0, 20.0),
-                                )
-                            },
-                        );
+                        let position =
+                            last_position.map_or(window::Position::Default, |last_position| {
+                                window::Position::Specific(last_position + Vector::new(20.0, 20.0))
+                            });
 
                         let (_id, open) = window::open(window::Settings {
                             position,
@@ -728,7 +733,7 @@ impl JobHunter {
                     })
                     .map(Message::WindowOpened)
             }
-            Message::WindowOpened(id) => { 
+            Message::WindowOpened(id) => {
                 let window = Window::new();
                 let focus_input = text_input::focus(format!("input-{id}")); // ?
                 self.windows.insert(id, window);
@@ -745,10 +750,15 @@ impl JobHunter {
             }
             /* Company */
             Message::TrackNewCompany => {
-                if self.company_name == "" || self.careers_url == "" { // hmm...
-                    return Task::none() // TODO ideally there would be visual feedback
+                if self.company_name == "" || self.careers_url == "" {
+                    // hmm...
+                    return Task::none(); // TODO ideally there would be visual feedback
                 }
-                let _ = Company::create(&self.db, self.company_name.clone(), self.careers_url.clone());
+                let _ = Company::create(
+                    &self.db,
+                    self.company_name.clone(),
+                    self.careers_url.clone(),
+                );
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
                 self.hide_modal();
                 Task::none()
@@ -765,22 +775,18 @@ impl JobHunter {
             Message::ToggleCompanyDropdown(id) => {
                 let current_val = match self.company_dropdowns.get(&id) {
                     Some(&status) => status,
-                    None => false
+                    None => false,
                 };
                 self.company_dropdowns.insert(id, !current_val);
                 Task::none()
             }
             Message::EditCompany => {
                 let company_id = match self.company_id {
-                    Some(id) => {
-                        id
-                    }
-                    None => {
-                        return Task::none()
-                    }
+                    Some(id) => id,
+                    None => return Task::none(),
                 };
                 if self.company_name == "" || self.careers_url == "" {
-                    return Task::none() // TODO visual feedback
+                    return Task::none(); // TODO visual feedback
                 }
                 let company = Company {
                     id: company_id,
@@ -795,7 +801,7 @@ impl JobHunter {
             /* Job Application */
             Message::CreateApplication => {
                 if self.job_app_status == None {
-                    return Task::none() // TODO feedback
+                    return Task::none(); // TODO feedback
                 }
                 let new_app = JobApplication {
                     id: 0,
@@ -814,7 +820,7 @@ impl JobHunter {
                     None => return Task::none(),
                 };
                 if self.job_app_status == None {
-                    return Task::none() // TODO feedback
+                    return Task::none(); // TODO feedback
                 }
                 let app = JobApplication {
                     id: app_id,
@@ -823,7 +829,8 @@ impl JobHunter {
                     date_applied: get_utc(self.job_app_applied),
                     date_responded: get_utc(self.job_app_responded),
                 };
-                let _ = JobApplication::update(&self.db, app).expect("Failed to update application");
+                let _ =
+                    JobApplication::update(&self.db, app).expect("Failed to update application");
                 self.hide_modal();
                 Task::none()
             }
@@ -836,7 +843,7 @@ impl JobHunter {
             Message::ToggleJobDropdown(id) => {
                 let current_val = match self.job_dropdowns.get(&id) {
                     Some(&status) => status,
-                    None => false
+                    None => false,
                 };
                 self.job_dropdowns.insert(id, !current_val);
                 Task::none()
@@ -844,12 +851,20 @@ impl JobHunter {
             Message::EditJobPost => {
                 let post_id = match self.job_post_id {
                     Some(id) => id,
-                    None => return Task::none()
+                    None => return Task::none(),
                 };
-                let mut post = self.job_posts.iter().find(|post| post.id == post_id).unwrap().clone();
-                if self.location_type == None || self.location == "" || 
-                    self.job_title == "" || self.url == "" {
-                    return Task::none() // TODO feedback
+                let mut post = self
+                    .job_posts
+                    .iter()
+                    .find(|post| post.id == post_id)
+                    .unwrap()
+                    .clone();
+                if self.location_type == None
+                    || self.location == ""
+                    || self.job_title == ""
+                    || self.url == ""
+                {
+                    return Task::none(); // TODO feedback
                 }
                 let min_pay = match self.min_pay.as_str() {
                     "" => None,
@@ -865,7 +880,7 @@ impl JobHunter {
                 post.min_yoe = self.min_yoe;
                 post.max_yoe = self.max_yoe;
                 post.min_pay_cents = min_pay;
-                post.max_pay_cents = max_pay; 
+                post.max_pay_cents = max_pay;
                 post.date_posted = get_utc(self.job_posted);
                 post.job_title = self.job_title.clone();
                 post.benefits = Some(self.benefits.clone());
@@ -876,9 +891,13 @@ impl JobHunter {
                 Task::none()
             }
             Message::CreateJobPost => {
-                if self.location_type == None || self.location == "" ||
-                    self.job_title == "" || self.url == "" || self.job_post_company == None {
-                    return Task::none() // TODO feedback
+                if self.location_type == None
+                    || self.location == ""
+                    || self.job_title == ""
+                    || self.url == ""
+                    || self.job_post_company == None
+                {
+                    return Task::none(); // TODO feedback
                 }
                 let min_pay = match self.min_pay.as_str() {
                     "" => None,
@@ -966,7 +985,9 @@ impl JobHunter {
                 focus_next()
             }
             Message::ShowCreateApplicationModal(job_post_id) => {
-                self.job_app_status_index = JobApplicationStatus::ALL.iter().position(|x| x == &JobApplicationStatus::New);
+                self.job_app_status_index = JobApplicationStatus::ALL
+                    .iter()
+                    .position(|x| x == &JobApplicationStatus::New);
                 self.job_app_status = Some(JobApplicationStatus::New);
                 self.job_post_id = Some(job_post_id);
                 // self.job_app_applied = Some(Date::today());
@@ -977,7 +998,9 @@ impl JobHunter {
                 let application = JobApplication::get(&self.db, application_id).unwrap();
                 self.job_post_id = Some(application.job_post_id);
                 self.job_app_id = Some(application.id);
-                self.job_app_status_index = JobApplicationStatus::ALL.iter().position(|x| x == &application.status);
+                self.job_app_status_index = JobApplicationStatus::ALL
+                    .iter()
+                    .position(|x| x == &application.status);
                 self.job_app_status = Some(application.status);
                 self.job_app_applied = get_iced_date(application.date_applied);
                 self.job_app_responded = get_iced_date(application.date_responded);
@@ -985,8 +1008,16 @@ impl JobHunter {
                 focus_next()
             }
             Message::ShowEditJobPostModal(job_post_id) => {
-                let job_post = self.job_posts.iter().find(|post| post.id == job_post_id).unwrap();
-                let company = self.companies.iter().find(|company| company.id == job_post.company_id).unwrap();
+                let job_post = self
+                    .job_posts
+                    .iter()
+                    .find(|post| post.id == job_post_id)
+                    .unwrap();
+                let company = self
+                    .companies
+                    .iter()
+                    .find(|company| company.id == job_post.company_id)
+                    .unwrap();
                 self.company_name = company.name.clone();
                 self.job_post_id = Some(job_post.id);
                 self.company_id = Some(company.id);
@@ -994,7 +1025,9 @@ impl JobHunter {
                 self.job_posted = get_iced_date(job_post.date_posted);
                 self.location = job_post.location.clone();
                 self.location_type = Some(job_post.location_type.clone());
-                self.location_type_index = JobPostLocationType::ALL.iter().position(|x| x == &job_post.location_type);
+                self.location_type_index = JobPostLocationType::ALL
+                    .iter()
+                    .position(|x| x == &job_post.location_type);
                 self.min_yoe = job_post.min_yoe;
                 self.max_yoe = job_post.max_yoe;
                 self.min_pay = get_pay_str(job_post.min_pay_cents);
@@ -1009,7 +1042,7 @@ impl JobHunter {
                 self.modal = Modal::AddJobPostModal;
                 focus_next()
             }
-            /* Advanced modal fields */ 
+            /* Advanced modal fields */
             Message::PickJobApplicationApplied => {
                 self.pick_job_app_applied = true;
                 Task::none()
@@ -1071,7 +1104,7 @@ impl JobHunter {
                 };
                 Task::none()
             }
-            Message::MaxYOEChanged(yoe_str)  => {
+            Message::MaxYOEChanged(yoe_str) => {
                 let yoe: Result<i32, _> = yoe_str.parse();
                 match yoe {
                     Ok(num) => {
@@ -1119,7 +1152,9 @@ impl JobHunter {
             }
             Message::JobPostCompanyNameChanged(company_name) => {
                 self.job_post_company_name = company_name.clone();
-                self.job_post_company_results = Company::list_by_name(&self.db, company_name.clone()).expect("Failed to get companies");
+                self.job_post_company_results =
+                    Company::list_by_name(&self.db, company_name.clone())
+                        .expect("Failed to get companies");
                 Task::none()
             }
             Message::JobPostCompanyChanged(index, company) => {
@@ -1130,7 +1165,8 @@ impl JobHunter {
             }
             /* Event */
             Message::Event(event) => match event {
-                Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Tab), 
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(key::Named::Tab),
                     modifiers,
                     ..
                 }) => {
@@ -1140,23 +1176,22 @@ impl JobHunter {
                         focus_next()
                     }
                 }
-                Event::Keyboard(keyboard::Event::KeyPressed { key: keyboard::Key::Named(key::Named::Escape),
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(key::Named::Escape),
                     ..
                 }) => {
                     self.hide_modal();
                     Task::none()
                 }
-                _ => {
-                    Task::none()
-                }
-            }
+                _ => Task::none(),
+            },
             _ => {
                 println!("WARNING: undefined Message");
                 Task::none()
             }
         }
     }
-    
+
     fn view(&self, id: window::Id) -> Element<Message> {
         let main_window_content = row![
             // Sidemenu container
@@ -1216,7 +1251,7 @@ impl JobHunter {
                                         container(dropdown)
                                         .width(Fill)
                                         .align_x(Alignment::End),
-                                        
+
                                     ]
                                     .align_y(Alignment::Center)
                                     .padding(Padding::from([5, 30]))
@@ -1225,7 +1260,7 @@ impl JobHunter {
                                 })
                         )
                         .spacing(5)
-                        
+
                     )
                     .width(Fill)
                     .height(Length::FillPortion(3))
@@ -1452,7 +1487,7 @@ impl JobHunter {
                                         Some(benefits) => format_comma_separated(benefits.to_string()),
                                         None => "No benefits specified".to_string(),
                                     };
-                                    
+
                                     container(
                                         row![
                                             column![
@@ -1522,39 +1557,60 @@ impl JobHunter {
             Modal::CreateCompanyModal => {
                 let create_company_content = self.company_modal(Message::TrackNewCompany);
 
-                modal(main_window_content, create_company_content, Message::HideModal)
+                modal(
+                    main_window_content,
+                    create_company_content,
+                    Message::HideModal,
+                )
             }
             Modal::EditCompanyModal => {
                 let edit_company_content = self.company_modal(Message::EditCompany);
 
-                modal(main_window_content, edit_company_content, Message::HideModal)
+                modal(
+                    main_window_content,
+                    edit_company_content,
+                    Message::HideModal,
+                )
             }
             // Job Application Modals
             Modal::CreateApplicationModal => {
                 let create_job_app_content = self.job_app_modal(Message::CreateApplication);
 
-                modal(main_window_content, create_job_app_content, Message::HideModal)
+                modal(
+                    main_window_content,
+                    create_job_app_content,
+                    Message::HideModal,
+                )
             }
             Modal::EditApplicationModal => {
                 let edit_job_app_content = self.job_app_modal(Message::EditApplication);
 
-                modal(main_window_content, edit_job_app_content, Message::HideModal)
+                modal(
+                    main_window_content,
+                    edit_job_app_content,
+                    Message::HideModal,
+                )
             }
             // Job Post Modals
             Modal::EditJobPostModal => {
                 let edit_job_post_content = self.job_post_modal(Message::EditJobPost);
 
-                modal(main_window_content, edit_job_post_content, Message::HideModal)
+                modal(
+                    main_window_content,
+                    edit_job_post_content,
+                    Message::HideModal,
+                )
             }
             Modal::AddJobPostModal => {
                 let add_job_post_content = self.job_post_modal(Message::CreateJobPost);
 
-                modal(main_window_content, add_job_post_content, Message::HideModal)
+                modal(
+                    main_window_content,
+                    add_job_post_content,
+                    Message::HideModal,
+                )
             }
-            Modal::None | _ => {
-                main_window_content.into()
-            }
+            Modal::None | _ => main_window_content.into(),
         }
     }
-    
 }

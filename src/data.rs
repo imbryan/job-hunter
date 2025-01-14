@@ -1,9 +1,9 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use chrono::{Datelike, DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use include_dir::{include_dir, Dir};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use rusqlite_migration::Migrations;
 
 pub fn connect(path: std::path::PathBuf) -> Connection {
@@ -26,13 +26,17 @@ pub fn timestamp_to_utc(ts: Option<i64>) -> Option<DateTime<Utc>> {
 pub fn get_utc(date: Option<iced_aw::date_picker::Date>) -> Option<chrono::DateTime<Utc>> {
     date.and_then(|date| {
         let naive_date = NaiveDate::from_ymd_opt(date.year, date.month, date.day)?;
-        Some(naive_date.and_hms_opt(0,0,0)?.and_utc())
+        Some(naive_date.and_hms_opt(0, 0, 0)?.and_utc())
     })
 }
 
 pub fn get_iced_date(date: Option<chrono::DateTime<Utc>>) -> Option<iced_aw::date_picker::Date> {
     date.and_then(|date| {
-        Some(iced_aw::date_picker::Date::from_ymd(date.year(), date.month(), date.day()) )
+        Some(iced_aw::date_picker::Date::from_ymd(
+            date.year(),
+            date.month(),
+            date.day(),
+        ))
     })
 }
 
@@ -47,21 +51,12 @@ pub fn get_pay_i64(s: &str) -> Result<i64, String> {
 pub fn get_pay_str(num: Option<i64>) -> String {
     match num {
         Some(num) => format!("{:.2}", num as f64 / 100.0),
-        None => "".to_string()
+        None => "".to_string(),
     }
 }
 
-pub fn opt_str_from_db(str: Option<String>) -> Option<String> {
-    match str {
-        Some(str) => {
-            if str.is_empty() {
-                None
-            } else {
-                Some(str)
-            }
-        },
-        None => None,
-    }
+pub fn opt_str_from_db(s: Option<String>) -> Option<String> {
+    s.and_then(|s| (!s.is_empty()).then_some(s))
 }
 
 pub fn format_comma_separated(str: String) -> String {
@@ -73,8 +68,8 @@ pub fn format_comma_separated(str: String) -> String {
                 None => String::new(),
             }
         })
-            .collect::<Vec<String>>()
-            .join(", ")
+        .collect::<Vec<String>>()
+        .join(", ")
 }
 
 /* Data models */
@@ -90,25 +85,26 @@ impl Company {
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
         conn.prepare("SELECT * FROM company ORDER BY name ASC")?
             .query_map([], |row| {
-            Ok(Company {
-                id: row.get("id")?,
-                name: row.get("name")?,
-                careers_url: row.get::<_, Option<String>>("careers_url")?.unwrap_or_else(|| "".to_string()),
-            })
-        })?
-        .collect()
+                Ok(Company {
+                    id: row.get("id")?,
+                    name: row.get("name")?,
+                    careers_url: row
+                        .get::<_, Option<String>>("careers_url")?
+                        .unwrap_or_else(|| "".to_string()),
+                })
+            })?
+            .collect()
     }
 
     pub fn get(conn: &Connection, id: i32) -> rusqlite::Result<Self> {
         let sql = "SELECT * FROM company WHERE id = ?";
-        conn.prepare(sql)?
-            .query_row([id], |row| {
-                Ok(Company {
-                    id: row.get("id")?,
-                    name: row.get("name")?,
-                    careers_url: row.get("careers_url")?,
-                })
+        conn.prepare(sql)?.query_row([id], |row| {
+            Ok(Company {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                careers_url: row.get("careers_url")?,
             })
+        })
     }
 
     pub fn list_by_name(conn: &Connection, name: String) -> rusqlite::Result<Vec<Self>> {
@@ -131,7 +127,10 @@ impl Company {
 
     pub fn update(conn: &Connection, company: Self) -> rusqlite::Result<()> {
         let sql = "UPDATE company SET name = ?, careers_url = ? WHERE id = ?";
-        conn.execute(sql, [company.name, company.careers_url, company.id.to_string()])?;
+        conn.execute(
+            sql,
+            [company.name, company.careers_url, company.id.to_string()],
+        )?;
         Ok(())
     }
 
@@ -181,7 +180,8 @@ impl JobPost {
             Err(_) => panic!(),
         };
         let posted: Option<i64> = row.get("date_posted")?;
-        let date_retrieved_timestamp = DateTime::from_timestamp(row.get("date_retrieved")?, 0).unwrap();
+        let date_retrieved_timestamp =
+            DateTime::from_timestamp(row.get("date_retrieved")?, 0).unwrap();
         Ok(JobPost {
             id: row.get("id")?,
             company_id: row.get("company_id")?,
@@ -201,13 +201,23 @@ impl JobPost {
     }
 
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        let sql = "SELECT * FROM job_post ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC";
+        let sql =
+            "SELECT * FROM job_post ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC";
         conn.prepare(sql)?
             .query_map([], |row| Self::map(row))?
             .collect()
     }
 
-    pub fn filter(conn: &Connection, title: Option<String>, location: Option<String>, min_yoe: Option<i32>, max_yoe: Option<i32>, onsite: bool, hybrid: bool, remote: bool) -> rusqlite::Result<Vec<Self>> {
+    pub fn filter(
+        conn: &Connection,
+        title: Option<String>,
+        location: Option<String>,
+        min_yoe: Option<i32>,
+        max_yoe: Option<i32>,
+        onsite: bool,
+        hybrid: bool,
+        remote: bool,
+    ) -> rusqlite::Result<Vec<Self>> {
         let mut where_clause: Vec<String> = Vec::new();
         if let Some(title) = title {
             where_clause.push(format!("job_title LIKE '%{}%'", title))
@@ -223,22 +233,34 @@ impl JobPost {
         }
         let mut job_loc_types: Vec<String> = Vec::new();
         if onsite {
-            job_loc_types.push(format!("location_type = '{}'", JobPostLocationType::Onsite.name()))
+            job_loc_types.push(format!(
+                "location_type = '{}'",
+                JobPostLocationType::Onsite.name()
+            ))
         }
         if hybrid {
-            job_loc_types.push(format!("location_type = '{}'", JobPostLocationType::Hybrid.name()))
+            job_loc_types.push(format!(
+                "location_type = '{}'",
+                JobPostLocationType::Hybrid.name()
+            ))
         }
         if remote {
-            job_loc_types.push(format!("location_type = '{}'", JobPostLocationType::Remote.name()))
+            job_loc_types.push(format!(
+                "location_type = '{}'",
+                JobPostLocationType::Remote.name()
+            ))
         }
         if !job_loc_types.is_empty() {
             where_clause.push(format!("({})", job_loc_types.join(" OR ")))
         }
-        let where_str = match where_clause.is_empty() { 
+        let where_str = match where_clause.is_empty() {
             true => "".to_string(),
             false => format!("WHERE {}", where_clause.join(" AND ")),
         };
-        let sql = format!("SELECT * FROM job_post {} ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC", where_str);
+        let sql = format!(
+            "SELECT * FROM job_post {} ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC",
+            where_str
+        );
         conn.prepare(&sql)?
             .query_map([], |row| Self::map(row))?
             .collect()
@@ -266,20 +288,23 @@ impl JobPost {
         url = ?, min_yoe = ?, max_yoe = ?, min_pay_cents = ?, max_pay_cents = ?,
         date_posted = ?, job_title = ?, benefits = ?, skills = ? 
         WHERE id = ?";
-        conn.execute(sql, params![
-            post.location,
-            post.location_type.name(),
-            post.url,
-            post.min_yoe,
-            post.max_yoe,
-            post.min_pay_cents,
-            post.max_pay_cents,
-            posted,
-            post.job_title,
-            post.benefits,
-            post.skills,
-            post.id,
-        ])?;
+        conn.execute(
+            sql,
+            params![
+                post.location,
+                post.location_type.name(),
+                post.url,
+                post.min_yoe,
+                post.max_yoe,
+                post.min_pay_cents,
+                post.max_pay_cents,
+                posted,
+                post.job_title,
+                post.benefits,
+                post.skills,
+                post.id,
+            ],
+        )?;
         Ok(())
     }
 
@@ -292,21 +317,24 @@ impl JobPost {
             (location, location_type, url, min_yoe, max_yoe, min_pay_cents, max_pay_cents,
             date_posted, job_title, benefits, skills, date_retrieved, company_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        conn.execute(sql, params![
-            post.location,
-            post.location_type.name(),
-            post.url,
-            post.min_yoe,
-            post.max_yoe,
-            post.min_pay_cents,
-            post.max_pay_cents,
-            posted,
-            post.job_title,
-            post.benefits,
-            post.skills,
-            post.date_retrieved.timestamp(),
-            post.company_id,
-        ])?;
+        conn.execute(
+            sql,
+            params![
+                post.location,
+                post.location_type.name(),
+                post.url,
+                post.min_yoe,
+                post.max_yoe,
+                post.min_pay_cents,
+                post.max_pay_cents,
+                posted,
+                post.job_title,
+                post.benefits,
+                post.skills,
+                post.date_retrieved.timestamp(),
+                post.company_id,
+            ],
+        )?;
         Ok(())
     }
 }
@@ -369,25 +397,24 @@ pub struct JobApplication {
 impl JobApplication {
     pub fn get(conn: &Connection, id: i32) -> rusqlite::Result<Self> {
         let sql = "SELECT * FROM job_application WHERE id = ?";
-        conn.prepare(sql)?
-            .query_row([id], |row| {
-                let status_str: String = row.get("status")?;
-                let status = match JobApplicationStatus::from_str(&status_str) {
-                    Ok(variant) => variant,
-                    Err(_) => panic!(),
-                };
-                
-                let applied: Option<i64> = row.get("date_applied")?;
-                let responded: Option<i64> = row.get("date_responded")?;
+        conn.prepare(sql)?.query_row([id], |row| {
+            let status_str: String = row.get("status")?;
+            let status = match JobApplicationStatus::from_str(&status_str) {
+                Ok(variant) => variant,
+                Err(_) => panic!(),
+            };
 
-                Ok(JobApplication {
-                    id: row.get("id")?,
-                    job_post_id: row.get("job_post_id")?,
-                    status: status,
-                    date_applied: timestamp_to_utc(applied),
-                    date_responded: timestamp_to_utc(responded),
-                })
+            let applied: Option<i64> = row.get("date_applied")?;
+            let responded: Option<i64> = row.get("date_responded")?;
+
+            Ok(JobApplication {
+                id: row.get("id")?,
+                job_post_id: row.get("job_post_id")?,
+                status: status,
+                date_applied: timestamp_to_utc(applied),
+                date_responded: timestamp_to_utc(responded),
             })
+        })
     }
 
     pub fn create(conn: &Connection, application: Self) -> rusqlite::Result<()> {
@@ -400,31 +427,37 @@ impl JobApplication {
             Some(date) => Some(date.timestamp()),
             None => None,
         };
-        conn.execute(sql, params![
-            application.status.name(), 
-            applied, 
-            responded, 
-            application.job_post_id,
-        ])?;
+        conn.execute(
+            sql,
+            params![
+                application.status.name(),
+                applied,
+                responded,
+                application.job_post_id,
+            ],
+        )?;
         Ok(())
     }
 
     pub fn update(conn: &Connection, application: Self) -> rusqlite::Result<()> {
         let applied = match application.date_applied {
             Some(date) => Some(date.timestamp()),
-            None => None
+            None => None,
         };
         let responded = match application.date_responded {
             Some(date) => Some(date.timestamp()),
-            None => None
+            None => None,
         };
         let sql = "UPDATE job_application SET status = ?, date_applied = ?, date_responded = ? WHERE id = ?";
-        conn.execute(sql, params![
-            application.status.name(),
-            applied,
-            responded,
-            application.id.to_string(),
-        ])?;
+        conn.execute(
+            sql,
+            params![
+                application.status.name(),
+                applied,
+                responded,
+                application.id.to_string(),
+            ],
+        )?;
         Ok(())
     }
 }
