@@ -13,7 +13,7 @@ use iced_aw::{date_picker::Date, drop_down, DropDown, helpers::badge, date_picke
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use rusqlite::Connection;
 
-use self::data::{Company, format_comma_separated, get_iced_date, get_pay_i64, get_pay_str, get_utc, JobApplication, JobApplicationStatus, JobPost, JobPostLocationType, migrate};
+use self::data::{Company, format_comma_separated, get_iced_date, get_pay_i64, get_pay_str, get_utc, JobApplication, JobApplicationStatus, JobPost, JobPostLocationType, migrate, opt_str_from_db};
 
 pub fn main() -> iced::Result {
     iced::daemon(JobHunter::title, JobHunter::update, JobHunter::view)
@@ -100,6 +100,7 @@ pub enum Message {
     ToggleJobDropdown(i32),
     // Filter
     ResetFilters,
+    FilterResults,
     FilterMinYOEChanged(i32),
     FilterMaxYOEChanged(i32),
     FilterOnsiteChanged(bool),
@@ -686,6 +687,19 @@ impl JobHunter {
         let jobs = JobPost::get_all(&self.db).expect("Failed to get job posts");
         self.job_posts = jobs;
     }
+
+    fn filter_results(&mut self) {
+        self.job_posts = JobPost::filter(
+            &self.db,
+            opt_str_from_db(Some(self.filter_job_title.clone())),
+            opt_str_from_db(Some(self.filter_location.clone())),
+            Some(self.filter_min_yoe),
+            if self.filter_max_yoe > 0 { Some(self.filter_max_yoe) } else { None },
+            self.filter_onsite,
+            self.filter_hybrid,
+            self.filter_remote,
+        ).expect("Failed to filter job posts");
+    }
     
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
@@ -926,6 +940,10 @@ impl JobHunter {
             }
             Message::ResetFilters => {
                 self.reset_filters();
+                Task::none()
+            }
+            Message::FilterResults => {
+                self.filter_results();
                 Task::none()
             }
             /* Hide Modal */
@@ -1308,7 +1326,8 @@ impl JobHunter {
                                 ]
                                 .spacing(5)
                                 .align_y(Alignment::Center)
-                            ),
+                            )
+                                .on_press(Message::FilterResults),
                             button(
                                 row![
                                     text("Find Jobs"),

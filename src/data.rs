@@ -174,34 +174,73 @@ pub struct JobPost {
 }
 
 impl JobPost {
+    pub fn map(row: &rusqlite::Row) -> rusqlite::Result<Self> {
+        let location_type_str: String = row.get("location_type")?;
+        let location_type = match JobPostLocationType::from_str(&location_type_str) {
+            Ok(variant) => variant,
+            Err(_) => panic!(),
+        };
+        let posted: Option<i64> = row.get("date_posted")?;
+        let date_retrieved_timestamp = DateTime::from_timestamp(row.get("date_retrieved")?, 0).unwrap();
+        Ok(JobPost {
+            id: row.get("id")?,
+            company_id: row.get("company_id")?,
+            location: row.get("location")?,
+            location_type: location_type,
+            url: row.get("url")?,
+            min_yoe: row.get("min_yoe")?,
+            max_yoe: row.get("max_yoe")?,
+            min_pay_cents: row.get("min_pay_cents")?,
+            max_pay_cents: row.get("max_pay_cents")?,
+            date_posted: timestamp_to_utc(posted),
+            date_retrieved: date_retrieved_timestamp,
+            job_title: row.get("job_title")?,
+            benefits: opt_str_from_db(row.get::<&str, Option<String>>("benefits")?),
+            skills: opt_str_from_db(row.get::<&str, Option<String>>("skills")?),
+        })
+    }
+
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
         let sql = "SELECT * FROM job_post ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC";
         conn.prepare(sql)?
-            .query_map([], |row| {
-                let location_type_str: String = row.get("location_type")?;
-                let location_type = match JobPostLocationType::from_str(&location_type_str) {
-                    Ok(variant) => variant,
-                    Err(_) => panic!(),
-                };
-                let posted: Option<i64> = row.get("date_posted")?;
-                let date_retrieved_timestamp = DateTime::from_timestamp(row.get("date_retrieved")?, 0).unwrap();
-                Ok(JobPost {
-                    id: row.get("id")?,
-                    company_id: row.get("company_id")?,
-                    location: row.get("location")?,
-                    location_type: location_type,
-                    url: row.get("url")?,
-                    min_yoe: row.get("min_yoe")?,
-                    max_yoe: row.get("max_yoe")?,
-                    min_pay_cents: row.get("min_pay_cents")?,
-                    max_pay_cents: row.get("max_pay_cents")?,
-                    date_posted: timestamp_to_utc(posted),
-                    date_retrieved: date_retrieved_timestamp,
-                    job_title: row.get("job_title")?,
-                    benefits: opt_str_from_db(row.get::<&str, Option<String>>("benefits")?),
-                    skills: opt_str_from_db(row.get::<&str, Option<String>>("skills")?),
-                })
-            })?
+            .query_map([], |row| Self::map(row))?
+            .collect()
+    }
+
+    pub fn filter(conn: &Connection, title: Option<String>, location: Option<String>, min_yoe: Option<i32>, max_yoe: Option<i32>, onsite: bool, hybrid: bool, remote: bool) -> rusqlite::Result<Vec<Self>> {
+        let mut where_clause: Vec<String> = Vec::new();
+        if let Some(title) = title {
+            where_clause.push(format!("job_title LIKE '%{}%'", title))
+        }
+        if let Some(location) = location {
+            where_clause.push(format!("location LIKE '%{}%'", location))
+        }
+        if let Some(min_yoe) = min_yoe {
+            where_clause.push(format!("min_yoe >= {}", min_yoe.to_string()))
+        }
+        if let Some(max_yoe) = max_yoe {
+            where_clause.push(format!("max_yoe <= {}", max_yoe.to_string()))
+        }
+        let mut job_loc_types: Vec<String> = Vec::new();
+        if onsite {
+            job_loc_types.push(format!("location_type = '{}'", JobPostLocationType::Onsite.name()))
+        }
+        if hybrid {
+            job_loc_types.push(format!("location_type = '{}'", JobPostLocationType::Hybrid.name()))
+        }
+        if remote {
+            job_loc_types.push(format!("location_type = '{}'", JobPostLocationType::Remote.name()))
+        }
+        if !job_loc_types.is_empty() {
+            where_clause.push(format!("({})", job_loc_types.join(" OR ")))
+        }
+        let where_str = match where_clause.is_empty() { 
+            true => "".to_string(),
+            false => format!("WHERE {}", where_clause.join(" AND ")),
+        };
+        let sql = format!("SELECT * FROM job_post {} ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC", where_str);
+        conn.prepare(&sql)?
+            .query_map([], |row| Self::map(row))?
             .collect()
     }
 
