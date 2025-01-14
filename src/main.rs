@@ -3,6 +3,7 @@ mod data;
 use std::collections::BTreeMap;
 
 use chrono::{Datelike, DateTime, NaiveDate, Utc};
+use clap::Parser;
 use iced::{Alignment, color, Element, Fill, Font, Length, Padding, Subscription, Task, Theme, Vector, window};
 use iced::event::Event;
 use iced::keyboard;
@@ -20,6 +21,7 @@ pub fn main() -> iced::Result {
         .subscription(JobHunter::subscription)
         .run_with(JobHunter::new)
 }
+
 
 pub struct JobHunter {
     // Window
@@ -137,6 +139,10 @@ pub enum Message {
     JobPostCompanyNameChanged(String),
     JobPostCompanyChanged(usize, Company),
 }
+#[derive(Parser)]
+pub struct Cli {
+    db_path: Option<std::path::PathBuf>, 
+}
 
 pub struct Window {
 }
@@ -192,7 +198,14 @@ fn modal<'a, Message>(
 
 impl JobHunter {
     fn new() -> (Self, Task<Message>) {
-        let mut conn = data::connect();
+        // Get db path argument (mostly for dev purposes)
+        let args = Cli::parse();
+        let db_path = match args.db_path {
+            Some(path) => path,
+            None => std::path::PathBuf::from("jobhunter.db"),
+        };
+        
+        let mut conn = data::connect(db_path);
         migrate(&mut conn);
 
         let companies = Company::get_all(&conn).expect("Failed to get companies");

@@ -6,8 +6,8 @@ use include_dir::{include_dir, Dir};
 use rusqlite::{Connection, params};
 use rusqlite_migration::Migrations;
 
-pub fn connect() -> Connection {
-    Connection::open("jobhunter.db").expect("Failed to open database")
+pub fn connect(path: std::path::PathBuf) -> Connection {
+    Connection::open(path).expect("Failed to open database")
 }
 
 pub fn migrate(conn: &mut Connection) {

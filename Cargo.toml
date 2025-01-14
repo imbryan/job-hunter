@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.39"
+clap = { version = "4.0", features = ["derive"] }
 iced = "0.13.1"
 iced_aw = { version = "0.11", default-features = false, features = ["badge", "date_picker", "drop_down", "number_input", "selection_list" ] }
 iced_font_awesome = "0.2.0"
