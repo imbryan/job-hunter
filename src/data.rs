@@ -79,15 +79,20 @@ pub struct Company {
     pub id: i32,
     pub name: String,
     pub careers_url: String,
+    pub hidden: bool,
 }
 
 impl Company {
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        conn.prepare("SELECT * FROM company ORDER BY name ASC")?
+        conn.prepare("SELECT * FROM company WHERE hidden = 0 ORDER BY name ASC")?
             .query_map([], |row| {
                 Ok(Company {
                     id: row.get("id")?,
                     name: row.get("name")?,
+                    hidden: row
+                        .get::<_, Option<i64>>("hidden")?
+                        .map(|val| val != 0)
+                        .unwrap_or(false),
                     careers_url: row
                         .get::<_, Option<String>>("careers_url")?
                         .unwrap_or_else(|| "".to_string()),
@@ -103,6 +108,10 @@ impl Company {
                 id: row.get("id")?,
                 name: row.get("name")?,
                 careers_url: row.get("careers_url")?,
+                hidden: row
+                    .get::<_, Option<i64>>("hidden")?
+                    .map(|val| val != 0)
+                    .unwrap_or(false),
             })
         })
     }
@@ -114,6 +123,10 @@ impl Company {
                     id: row.get("id")?,
                     name: row.get("name")?,
                     careers_url: row.get("careers_url")?,
+                    hidden: row
+                        .get::<_, Option<i64>>("hidden")?
+                        .map(|val| val != 0)
+                        .unwrap_or(false),
                 })
             })?
             .collect()
@@ -126,10 +139,15 @@ impl Company {
     }
 
     pub fn update(conn: &Connection, company: Self) -> rusqlite::Result<()> {
-        let sql = "UPDATE company SET name = ?, careers_url = ? WHERE id = ?";
+        let sql = "UPDATE company SET name = ?, careers_url = ?, hidden = ? WHERE id = ?";
         conn.execute(
             sql,
-            [company.name, company.careers_url, company.id.to_string()],
+            [
+                company.name,
+                company.careers_url,
+                (company.hidden as i32).to_string(),
+                company.id.to_string(),
+            ],
         )?;
         Ok(())
     }
@@ -137,6 +155,12 @@ impl Company {
     pub fn delete(conn: &Connection, id: i32) -> rusqlite::Result<()> {
         let sql = "DELETE FROM company WHERE id = ?";
         conn.execute(sql, [id])?;
+        Ok(())
+    }
+
+    pub fn show_all(conn: &Connection) -> rusqlite::Result<()> {
+        let sql = "UPDATE company SET hidden = 0";
+        conn.execute(sql, [])?;
         Ok(())
     }
 }
@@ -201,8 +225,9 @@ impl JobPost {
     }
 
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        let sql =
-            "SELECT * FROM job_post ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC";
+        let sql = "SELECT * FROM job_post JOIN company ON job_post.company_id = company.id
+            WHERE company.hidden = 0
+            ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC";
         conn.prepare(sql)?
             .query_map([], |row| Self::map(row))?
             .collect()

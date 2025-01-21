@@ -99,6 +99,8 @@ pub enum Message {
     TrackNewCompany,
     EditCompany,
     ToggleCompanyMenu,
+    ShowAllCompanies,
+    HideCompany(i32),
     // JobApplication
     CreateApplication,
     EditApplication,
@@ -792,10 +794,33 @@ impl JobHunter {
                     id: company_id,
                     name: self.company_name.clone(),
                     careers_url: self.careers_url.clone(),
+                    hidden: false, // TODO ?
                 };
                 let _ = Company::update(&self.db, company).expect("Failed to update company");
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
                 self.hide_modal();
+                Task::none()
+            }
+            Message::HideCompany(id) => {
+                let mut company = Company::get(&self.db, id).expect("Failed to get company");
+                company.hidden = true;
+                let id_to_remove = company.id;
+                let _ = Company::update(&self.db, company).expect("Failed to update company");
+                if let Some(pos) = self
+                    .companies
+                    .iter()
+                    .position(|company| company.id == id_to_remove)
+                {
+                    self.companies.remove(pos);
+                };
+                self.company_dropdowns.remove(&id_to_remove);
+                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                Task::none()
+            }
+            Message::ShowAllCompanies => {
+                let _ = Company::show_all(&self.db).expect("Failed to show companies");
+                self.companies = Company::get_all(&self.db).expect("Failed to get companies");
+                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
                 Task::none()
             }
             /* Job Application */
@@ -1198,7 +1223,8 @@ impl JobHunter {
             container(
                 column![
                     row![
-                        text("Companies"),
+                        button(text("Show All"))
+                            .on_press(Message::ShowAllCompanies),
                         container(
                             button(
                                 row![
@@ -1230,7 +1256,8 @@ impl JobHunter {
                                             button(text("Edit"))
                                                 .on_press(Message::ShowEditCompanyModal(company_id))
                                                 .into(),
-                                            button(text("Exclude"))
+                                            button(text("Hide"))
+                                                .on_press(Message::HideCompany(company_id))
                                                 .into(),
                                             button(text("Delete"))
                                                 .on_press(Message::DeleteCompany(company_id)) // TODO warning / confirmation
