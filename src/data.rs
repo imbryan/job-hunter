@@ -250,11 +250,19 @@ impl JobPost {
         if let Some(location) = location {
             where_clause.push(format!("location LIKE '%{}%'", location))
         }
-        if let Some(min_yoe) = min_yoe {
-            where_clause.push(format!("min_yoe >= {}", min_yoe.to_string()))
-        }
-        if let Some(max_yoe) = max_yoe {
-            where_clause.push(format!("max_yoe <= {}", max_yoe.to_string()))
+        if let (Some(min_yoe), Some(max_yoe)) = (min_yoe, max_yoe) {
+            println!("using both");
+            where_clause.push(format!(
+                "min_yoe = {} AND max_yoe <= {}",
+                min_yoe.to_string(),
+                max_yoe.to_string()
+            ))
+        } else if let Some(min_yoe) = min_yoe {
+            let min_yoe_str = min_yoe.to_string();
+            where_clause.push(format!("min_yoe = {}", min_yoe_str))
+        } else if let Some(max_yoe) = max_yoe {
+            let max_yoe_str = max_yoe.to_string();
+            where_clause.push(format!("max_yoe = {}", max_yoe_str))
         }
         let mut job_loc_types: Vec<String> = Vec::new();
         if onsite {

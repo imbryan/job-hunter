@@ -699,7 +699,11 @@ impl JobHunter {
             &self.db,
             opt_str_from_db(Some(self.filter_job_title.clone())),
             opt_str_from_db(Some(self.filter_location.clone())),
-            Some(self.filter_min_yoe),
+            if self.filter_min_yoe == 0 && self.filter_max_yoe == 0 {
+                None
+            } else {
+                Some(self.filter_min_yoe)
+            },
             if self.filter_max_yoe > 0 {
                 Some(self.filter_max_yoe)
             } else {
