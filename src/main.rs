@@ -818,13 +818,13 @@ impl JobHunter {
                     self.companies.remove(pos);
                 };
                 self.company_dropdowns.remove(&id_to_remove);
-                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                self.filter_results();
                 Task::none()
             }
             Message::ShowAllCompanies => {
                 let _ = Company::show_all(&self.db).expect("Failed to show companies");
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
-                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                self.filter_results();
                 Task::none()
             }
             /* Job Application */

@@ -197,6 +197,8 @@ pub struct JobPost {
 }
 
 impl JobPost {
+    const DEFAULT_ORDER: &str = "ORDER BY job_application.date_applied DESC NULLS FIRST, job_application.date_responded DESC, date_posted DESC, date_retrieved DESC";
+
     pub fn map(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         let location_type_str: String = row.get("location_type")?;
         let location_type = match JobPostLocationType::from_str(&location_type_str) {
@@ -225,10 +227,14 @@ impl JobPost {
     }
 
     pub fn get_all(conn: &Connection) -> rusqlite::Result<Vec<Self>> {
-        let sql = "SELECT * FROM job_post JOIN company ON job_post.company_id = company.id
+        let sql = format!(
+            "SELECT * FROM job_post JOIN company ON job_post.company_id = company.id
+            LEFT JOIN job_application ON job_post.id = job_application.job_post_id
             WHERE company.hidden = 0
-            ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC";
-        conn.prepare(sql)?
+            {}",
+            Self::DEFAULT_ORDER
+        );
+        conn.prepare(&sql)?
             .query_map([], |row| Self::map(row))?
             .collect()
     }
@@ -286,13 +292,16 @@ impl JobPost {
         if !job_loc_types.is_empty() {
             where_clause.push(format!("({})", job_loc_types.join(" OR ")))
         }
+        where_clause.push("company.hidden = 0".to_string());
         let where_str = match where_clause.is_empty() {
             true => "".to_string(),
             false => format!("WHERE {}", where_clause.join(" AND ")),
         };
         let sql = format!(
-            "SELECT * FROM job_post {} ORDER BY date_posted DESC NULLS FIRST, date_retrieved DESC",
-            where_str
+            "SELECT * FROM job_post JOIN company ON job_post.company_id = company.id
+            LEFT JOIN job_application ON job_post.id = job_application.job_post_id {} {}",
+            where_str,
+            Self::DEFAULT_ORDER
         );
         conn.prepare(&sql)?
             .query_map([], |row| Self::map(row))?
