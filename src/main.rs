@@ -1016,10 +1016,10 @@ impl JobHunter {
             Message::ShowCreateApplicationModal(job_post_id) => {
                 self.job_app_status_index = JobApplicationStatus::ALL
                     .iter()
-                    .position(|x| x == &JobApplicationStatus::New);
-                self.job_app_status = Some(JobApplicationStatus::New);
+                    .position(|x| x == &JobApplicationStatus::Applied);
+                self.job_app_status = Some(JobApplicationStatus::Applied);
                 self.job_post_id = Some(job_post_id);
-                // self.job_app_applied = Some(Date::today());
+                self.job_app_applied = Some(Date::today());
                 self.modal = Modal::CreateApplicationModal;
                 focus_next()
             }
