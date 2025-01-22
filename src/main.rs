@@ -841,6 +841,7 @@ impl JobHunter {
                     date_responded: get_utc(self.job_app_responded),
                 };
                 let _ = JobApplication::create(&self.db, new_app);
+                self.filter_results();
                 self.hide_modal();
                 Task::none()
             }
@@ -861,13 +862,15 @@ impl JobHunter {
                 };
                 let _ =
                     JobApplication::update(&self.db, app).expect("Failed to update application");
+                self.filter_results();
                 self.hide_modal();
                 Task::none()
             }
             /* Job Post */
             Message::DeleteJobPost(id) => {
                 let _ = JobPost::delete(&self.db, id);
-                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                // self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                self.filter_results();
                 Task::none()
             }
             Message::ToggleJobDropdown(id) => {
@@ -916,7 +919,8 @@ impl JobHunter {
                 post.benefits = Some(self.benefits.clone());
                 post.skills = Some(self.skills.clone());
                 let _ = JobPost::update(&self.db, post).expect("Failed to update job post");
-                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                // self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                self.filter_results();
                 self.hide_modal();
                 Task::none()
             }
@@ -954,7 +958,8 @@ impl JobHunter {
                     skills: Some(self.skills.clone()),
                 };
                 let _ = JobPost::create(&self.db, post).expect("Failed to create job post");
-                self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                // self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
+                self.filter_results();
                 self.hide_modal();
                 Task::none()
             }
