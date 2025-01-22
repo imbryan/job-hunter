@@ -43,9 +43,11 @@ pub struct JobHunter {
     // Company
     companies: Vec<Company>,
     company_dropdowns: BTreeMap<i32, bool>,
+    company_scroll: f32,
     // JobPosts
     job_posts: Vec<JobPost>,
     job_dropdowns: BTreeMap<i32, bool>,
+    job_post_scroll: f32,
     // Filter
     filter_min_yoe: i32,
     filter_max_yoe: i32,
@@ -101,6 +103,7 @@ pub enum Message {
     ToggleCompanyMenu,
     ShowAllCompanies,
     HideCompany(i32),
+    CompanyScroll(iced::widget::scrollable::Viewport),
     // JobApplication
     CreateApplication,
     EditApplication,
@@ -108,6 +111,7 @@ pub enum Message {
     DeleteJobPost(i32),
     EditJobPost,
     CreateJobPost,
+    JobPostScroll(iced::widget::scrollable::Viewport),
     // Dropdown
     ToggleCompanyDropdown(i32),
     ToggleJobDropdown(i32),
@@ -271,6 +275,8 @@ impl JobHunter {
                 job_post_company_results: Vec::new(),
                 job_post_company: None,
                 job_post_company_index: None,
+                company_scroll: 0.0,
+                job_post_scroll: 0.0,
             },
             open.map(Message::WindowOpened),
         )
@@ -828,6 +834,11 @@ impl JobHunter {
                 self.filter_results();
                 Task::none()
             }
+            // https://github.com/iced-rs/iced_aw/issues/300#issuecomment-2563377964
+            Message::CompanyScroll(viewport) => {
+                self.company_scroll = viewport.absolute_offset().y;
+                Task::none()
+            }
             /* Job Application */
             Message::CreateApplication => {
                 if self.job_app_status == None {
@@ -961,6 +972,11 @@ impl JobHunter {
                 // self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
                 self.filter_results();
                 self.hide_modal();
+                Task::none()
+            }
+            // https://github.com/iced-rs/iced_aw/issues/300#issuecomment-2563377964
+            Message::JobPostScroll(viewport) => {
+                self.job_post_scroll = viewport.absolute_offset().y;
                 Task::none()
             }
             /* Filter */
@@ -1281,7 +1297,8 @@ impl JobHunter {
                                     )
                                     .width(Fill)
                                     .alignment(drop_down::Alignment::BottomEnd)
-                                    .on_dismiss(Message::ToggleCompanyDropdown(company_id));
+                                    .on_dismiss(Message::ToggleCompanyDropdown(company_id))
+                                    .offset(iced_aw::drop_down::Offset::new(5.0, -self.company_scroll + 5.0));
 
                                     row![
                                         text(&company.name),
@@ -1301,6 +1318,9 @@ impl JobHunter {
                     )
                     .width(Fill)
                     .height(Length::FillPortion(3))
+                    .on_scroll(|viewport| {
+                        Message::CompanyScroll(viewport)
+                    })
                     ,
                     // Settings area
                     text("")
@@ -1514,7 +1534,8 @@ impl JobHunter {
                                     )
                                     .width(Fill)
                                     .alignment(drop_down::Alignment::Bottom)
-                                    .on_dismiss(Message::ToggleJobDropdown(job_post.id));
+                                    .on_dismiss(Message::ToggleJobDropdown(job_post.id))
+                                    .offset(iced_aw::drop_down::Offset::from(-self.job_post_scroll + 5.0));
 
                                     let skills_text = match &job_post.skills {
                                         Some(skills) => format_comma_separated(skills.to_string()),
@@ -1578,6 +1599,9 @@ impl JobHunter {
                             .spacing(15)
                             .padding(Padding::from([20, 30]))
                     )
+                        .on_scroll(|viewport| {
+                            Message::JobPostScroll(viewport)
+                        })
                 ]
                 .spacing(15)
             )
