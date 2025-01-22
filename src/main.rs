@@ -764,6 +764,7 @@ impl JobHunter {
                     &self.db,
                     self.company_name.clone(),
                     self.careers_url.clone(),
+                    false,
                 );
                 self.companies = Company::get_all(&self.db).expect("Failed to get companies");
                 self.hide_modal();

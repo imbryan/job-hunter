@@ -132,9 +132,14 @@ impl Company {
             .collect()
     }
 
-    pub fn create(conn: &Connection, name: String, careers_url: String) -> rusqlite::Result<()> {
-        let sql = "INSERT INTO company (name, careers_url) VALUES (?, ?)";
-        conn.execute(sql, [name, careers_url])?;
+    pub fn create(
+        conn: &Connection,
+        name: String,
+        careers_url: String,
+        hidden: bool,
+    ) -> rusqlite::Result<()> {
+        let sql = "INSERT INTO company (name, careers_url, hidden) VALUES (?, ?, ?)";
+        conn.execute(sql, [name, careers_url, (hidden as i64).to_string()])?;
         Ok(())
     }
 
