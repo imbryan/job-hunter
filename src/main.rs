@@ -86,6 +86,9 @@ pub struct JobHunter {
     job_post_company_results: Vec<Company>,
     job_post_company: Option<Company>,
     job_post_company_index: Option<usize>,
+    primary_modal_field: Option<iced::widget::text_input::Id>,
+    last_modal_field: Option<iced::widget::text_input::Id>,
+    last_modal_field_focused: bool, // TODO https://discourse.iced.rs/t/use-focus-and-find-focused-with-text-input/671/5
 }
 
 #[derive(Debug, Clone)]
@@ -156,6 +159,7 @@ pub enum Message {
     ShowAddJobPostModal,
     JobPostCompanyNameChanged(String),
     JobPostCompanyChanged(usize, Company),
+    LastModalFieldFocused,
 }
 #[derive(Parser)]
 pub struct Cli {
@@ -277,6 +281,9 @@ impl JobHunter {
                 job_post_company_index: None,
                 company_scroll: 0.0,
                 job_post_scroll: 0.0,
+                primary_modal_field: None,
+                last_modal_field: None,
+                last_modal_field_focused: false,
             },
             open.map(Message::WindowOpened),
         )
@@ -305,6 +312,7 @@ impl JobHunter {
                     column![
                         text("Company Name").size(12),
                         text_input("", &self.company_name) // hmm...
+                            .id(self.primary_modal_field.clone().unwrap())
                             .on_input(Message::CompanyNameChanged)
                             .on_submit(submit_message.clone())
                             .padding(5)
@@ -313,6 +321,7 @@ impl JobHunter {
                     column![
                         text("Company's Careers Page URL").size(12),
                         text_input("", &self.careers_url)
+                            .id(self.last_modal_field.clone().unwrap())
                             .on_input(Message::CareersURLChanged)
                             .on_submit(submit_message.clone())
                             .padding(5)
@@ -442,6 +451,7 @@ impl JobHunter {
         let company_element: Element<'_, Message, Theme, iced::Renderer> = match &self.job_post_id {
             Some(_) => text(self.company_name.clone()).into(),
             None => text_input("", &self.job_post_company_name)
+                .id(self.primary_modal_field.clone().unwrap())
                 .on_input(Message::JobPostCompanyNameChanged)
                 .padding(5)
                 .into(),
@@ -503,6 +513,13 @@ impl JobHunter {
             Font::default(),
         )
         .height(Length::Fixed(70.0));
+        let mut job_title_field = text_input("", &self.job_title)
+            .on_input(Message::JobTitleChanged)
+            .on_submit(submit_message.clone())
+            .padding(5);
+        if self.job_post_id.is_some() {
+            job_title_field = job_title_field.id(self.primary_modal_field.clone().unwrap());
+        }
         container(
             column![
                 text(title).size(24),
@@ -525,15 +542,9 @@ impl JobHunter {
                     .spacing(15),
                     row![
                         // Title field
-                        column![
-                            text("Job Title").size(12),
-                            text_input("", &self.job_title)
-                                .on_input(Message::JobTitleChanged)
-                                .on_submit(submit_message.clone())
-                                .padding(5),
-                        ]
-                        .width(Length::FillPortion(1))
-                        .spacing(5),
+                        column![text("Job Title").size(12), job_title_field,]
+                            .width(Length::FillPortion(1))
+                            .spacing(5),
                         // URL
                         column![
                             text("Job URL").size(12),
@@ -627,6 +638,7 @@ impl JobHunter {
                             text("Benefits").size(12),
                             text("Comma-separated").size(10),
                             text_input("", &self.benefits)
+                                .id(self.last_modal_field.clone().unwrap())
                                 .on_input(Message::BenefitsChanged)
                                 .on_submit(submit_message.clone())
                                 .padding(5)
@@ -685,6 +697,8 @@ impl JobHunter {
         self.job_post_company_results = Vec::new();
         self.job_post_company = None;
         self.job_post_company_index = None;
+        self.primary_modal_field = None;
+        self.last_modal_field = None;
     }
 
     fn reset_filters(&mut self) {
@@ -720,6 +734,14 @@ impl JobHunter {
             self.filter_remote,
         )
         .expect("Failed to filter job posts");
+    }
+
+    fn set_primary_modal_field(&mut self) {
+        self.primary_modal_field = Some(iced::widget::text_input::Id::unique());
+    }
+
+    fn set_last_modal_field(&mut self) {
+        self.last_modal_field = Some(iced::widget::text_input::Id::unique());
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -1024,7 +1046,9 @@ impl JobHunter {
             /* Show modal */
             Message::ShowCreateCompanyModal => {
                 self.modal = Modal::CreateCompanyModal;
-                focus_next()
+                self.set_primary_modal_field();
+                self.set_last_modal_field();
+                text_input::focus(self.primary_modal_field.clone().unwrap())
             }
             Message::ShowEditCompanyModal(id) => {
                 let company = Company::get(&self.db, id).unwrap();
@@ -1033,7 +1057,9 @@ impl JobHunter {
                 self.company_id = Some(id);
                 self.company_dropdowns.insert(id, false);
                 self.modal = Modal::EditCompanyModal;
-                focus_next()
+                self.set_primary_modal_field();
+                self.set_last_modal_field();
+                text_input::focus(self.primary_modal_field.clone().unwrap())
             }
             Message::ShowCreateApplicationModal(job_post_id) => {
                 self.job_app_status_index = JobApplicationStatus::ALL
@@ -1043,7 +1069,7 @@ impl JobHunter {
                 self.job_post_id = Some(job_post_id);
                 self.job_app_applied = Some(Date::today());
                 self.modal = Modal::CreateApplicationModal;
-                focus_next()
+                Task::none()
             }
             Message::ShowEditApplicationModal(application_id) => {
                 let application = JobApplication::get(&self.db, application_id).unwrap();
@@ -1056,7 +1082,7 @@ impl JobHunter {
                 self.job_app_applied = get_iced_date(application.date_applied);
                 self.job_app_responded = get_iced_date(application.date_responded);
                 self.modal = Modal::EditApplicationModal;
-                focus_next()
+                Task::none()
             }
             Message::ShowEditJobPostModal(job_post_id) => {
                 let job_post = self
@@ -1087,11 +1113,15 @@ impl JobHunter {
                 self.skills = job_post.skills.clone().unwrap_or("".to_string());
                 self.url = job_post.url.clone();
                 self.modal = Modal::EditJobPostModal;
-                focus_next()
+                self.set_primary_modal_field();
+                self.set_last_modal_field();
+                text_input::focus(self.primary_modal_field.clone().unwrap())
             }
             Message::ShowAddJobPostModal => {
                 self.modal = Modal::AddJobPostModal;
-                focus_next()
+                self.set_primary_modal_field();
+                self.set_last_modal_field();
+                text_input::focus(self.primary_modal_field.clone().unwrap())
             }
             /* Advanced modal fields */
             Message::PickJobApplicationApplied => {
