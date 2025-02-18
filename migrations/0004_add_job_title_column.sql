@@ -1,0 +1,2 @@
+ALTER TABLE job_post
+ADD job_title VARCHAR NOT NULL;
