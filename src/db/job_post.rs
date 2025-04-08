@@ -77,19 +77,20 @@ pub struct JobPost {
 }
 
 impl JobPost {
-    pub const DEFAULT_ORDER: &str = "ORDER BY job_application.date_applied DESC NULLS FIRST, job_application.date_responded DESC, date_posted DESC, date_retrieved DESC";
+    pub const DEFAULT_ORDER: &str = "job_application.date_applied DESC NULLS FIRST, job_application.date_responded DESC, date_posted DESC, date_retrieved DESC";
 
     pub async fn fetch_all(executor: &sqlx::SqlitePool) -> anyhow::Result<Vec<Self>> {
-        sqlx::query_as!(
-            Self,
+        // println!("fetch all");
+        let sql = format!(
             "SELECT job_post.* FROM job_post JOIN company ON job_post.company_id = company.id
             LEFT JOIN job_application on job_post.id = job_application.job_post_id
-            WHERE company.hidden = 0
-            ORDER BY job_application.date_applied DESC NULLS FIRST, job_application.date_responded DESC, date_posted DESC, date_retrieved DESC"
-        )
-        .fetch_all(executor)
-        .await
-        .map_err(Into::into)
+            WHERE company.hidden = 0 ORDER BY {}",
+            Self::DEFAULT_ORDER
+        );
+        sqlx::query_as::<_, Self>(&sql)
+            .fetch_all(executor)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn update(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {

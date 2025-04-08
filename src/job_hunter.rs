@@ -749,28 +749,35 @@ impl JobHunter {
             LEFT JOIN job_application ON job_post.id = job_application.job_post_id WHERE",
         );
         // WHERE
+        // company.hidden
+        query.push(" company.hidden = 0 ");
         // years of experience
-        query.push("(min_yoe >= ").push_bind(filter_min_yoe);
-        if let Some(max_yoe) = (filter_max_yoe > 0).then_some(filter_max_yoe) {
-            query.push(" AND max_yoe <= ").push_bind(max_yoe);
+        if !(filter_min_yoe == filter_max_yoe && filter_max_yoe == 0) {
+            query.push(" AND min_yoe = ").push_bind(filter_min_yoe);
+            if let Some(max_yoe) =
+                (filter_max_yoe > 0 && filter_max_yoe > filter_min_yoe).then_some(filter_max_yoe)
+            {
+                query.push(" AND max_yoe <= ").push_bind(max_yoe);
+            }
         }
         // job title
         if !filter_title.is_empty() {
             query
                 .push(" AND job_title LIKE ")
-                .push("'%")
-                .push_bind(filter_title.clone())
-                .push("%'");
+                // .push("'%")
+                // .push_bind(filter_title.clone())
+                // .push("%'");
+                .push_bind(format!("%{}%", filter_title.clone())); // push_bind does the quoting
         }
         // location
         if !filter_location.is_empty() {
             query
                 .push(" AND location LIKE ")
-                .push("'%")
-                .push_bind(filter_location.clone())
-                .push("%'");
+                // .push("'%")
+                // .push_bind(filter_location.clone())
+                // .push("%'");
+                .push_bind(format!("%{}%", filter_location.clone()));
         }
-        query.push(")");
 
         // loc types
         let mut job_loc_types = Vec::with_capacity(3);
@@ -784,17 +791,22 @@ impl JobHunter {
             job_loc_types.push(JobPostLocationType::Remote.name());
         }
         if !job_loc_types.is_empty() {
-            query.push(" AND");
-            query
-                .push(" location_type IN (")
-                .push_bind(job_loc_types.join(", "))
-                .push(")");
+            query.push(" AND location_type IN (");
+            // .push_bind(job_loc_types.join(", "))
+            // .push(")");
+            for (i, loc_type) in job_loc_types.iter().enumerate() {
+                if i > 0 {
+                    query.push(", ");
+                }
+                query.push_bind(loc_type);
+            }
+            query.push(")");
         }
-        // company.hidden
-        query.push(" AND company.hidden = 0 ");
         // ORDER BY
+        query.push(" ORDER BY ");
         query.push(JobPost::DEFAULT_ORDER);
         // ---
+        // println!("{}", query.sql());
         query
             .build_query_as()
             .fetch_all(&pool)
