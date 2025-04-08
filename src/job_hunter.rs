@@ -1093,7 +1093,19 @@ impl JobHunter {
                     date_responded: NullableSqliteDateTime::from(self.job_app_responded),
                 };
                 // let _ = JobApplication::create(&self.db, new_app);
-                let _ = new_app.insert(&mut self.db);
+                // let _ = new_app.insert(&mut self.db);
+                {
+                    let pool = self.db.clone();
+                    let (sender, receiver) = std::sync::mpsc::channel();
+                    self.tokio_handle.spawn(async move {
+                        let res = new_app.insert(&pool).await;
+                        _ = sender.send(res);
+                    });
+                    receiver
+                        .recv()
+                        .expect("Failed to receive app insert res")
+                        .expect("Failed to create application")
+                }
                 // self.filter_results();
                 self.hide_modal();
                 // Task::none()
@@ -1416,6 +1428,7 @@ impl JobHunter {
                 text_input::focus(self.primary_modal_field.clone().unwrap())
             }
             Message::ShowCreateApplicationModal(job_post_id) => {
+                // println!("job_post_id: {}", job_post_id);
                 self.job_app_status_index = JobApplicationStatus::ALL
                     .iter()
                     .position(|x| x == &JobApplicationStatus::Applied);
