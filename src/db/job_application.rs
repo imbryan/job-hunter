@@ -106,6 +106,21 @@ impl JobApplication {
         Ok(ret)
     }
 
+    pub async fn fetch_one_by_job_post_id(
+        job_post_id: i64,
+        executor: &sqlx::SqlitePool,
+    ) -> anyhow::Result<Option<Self>> {
+        let ret = sqlx::query_as!(
+            Self,
+            r#"SELECT * FROM job_application WHERE job_post_id = $1"#,
+            job_post_id,
+        )
+        .fetch_optional(executor)
+        .await?;
+
+        Ok(ret)
+    }
+
     pub async fn insert(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
         sqlx::query!(
             r#"INSERT INTO job_application (status, date_applied, date_responded, job_post_id) VALUES ($1, $2, $3, $4)"#,

@@ -745,7 +745,7 @@ impl JobHunter {
         filter_remote: bool,
     ) -> Vec<JobPost> {
         let mut query = QueryBuilder::new(
-            "SELECT * FROM job_post JOIN company ON job_post.company_id = company.id
+            "SELECT job_post.* FROM job_post JOIN company ON job_post.company_id = company.id
             LEFT JOIN job_application ON job_post.id = job_application.job_post_id WHERE",
         );
         // WHERE
@@ -1160,6 +1160,7 @@ impl JobHunter {
             /* Job Post */
             Message::DeleteJobPost(id) => {
                 // let _ = JobPost::delete(&self.db, id);
+                // println!("id: {}", id);
                 let job_posts = {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
@@ -1181,6 +1182,7 @@ impl JobHunter {
                 Task::none()
             }
             Message::ToggleJobDropdown(id) => {
+                // println!("id: {}", id);
                 let current_val = match self.job_dropdowns.get(&id) {
                     Some(&status) => status,
                     None => false,
@@ -1851,6 +1853,7 @@ impl JobHunter {
                             self.job_posts.clone()
                                 .into_iter()
                                 .map(|job_post| {
+                                    // println!("id: {}", job_post.id);
                                     // let company = Company::get(&self.db, job_post.company_id).unwrap();
                                     let company = {
                                         let pool = self.db.clone();
@@ -1903,7 +1906,7 @@ impl JobHunter {
                                         let pool = self.db.clone();
                                         let (sender, receiver) = std::sync::mpsc::channel();
                                         self.tokio_handle.spawn(async move{
-                                            let job_app_res = JobApplication::fetch_one(job_post.id, &pool).await;
+                                            let job_app_res = JobApplication::fetch_one_by_job_post_id(job_post.id, &pool).await;
                                             _ = sender.send(job_app_res);
                                         });
                                         receiver.recv()

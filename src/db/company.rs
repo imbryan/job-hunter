@@ -84,9 +84,28 @@ impl Company {
     }
 
     pub async fn delete(id: i64, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
-        sqlx::query!("DELETE FROM company WHERE id = $1", id)
-            .execute(executor)
+        let mut tx = executor.begin().await?;
+
+        sqlx::query!(
+            "DELETE FROM job_application 
+            WHERE job_application.job_post_id IN
+            ( 
+                SELECT job_post.id FROM job_post WHERE job_post.company_id = ? 
+            )",
+            id,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query!("DELETE FROM job_post WHERE company_id = ?", id)
+            .execute(&mut *tx)
             .await?;
+
+        sqlx::query!("DELETE FROM company WHERE id = $1", id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
 
         Ok(())
     }

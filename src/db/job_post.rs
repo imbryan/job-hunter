@@ -81,13 +81,14 @@ impl JobPost {
 
     pub async fn fetch_all(executor: &sqlx::SqlitePool) -> anyhow::Result<Vec<Self>> {
         // println!("fetch all");
-        let sql = format!(
+        let mut query = sqlx::QueryBuilder::new(
             "SELECT job_post.* FROM job_post JOIN company ON job_post.company_id = company.id
             LEFT JOIN job_application on job_post.id = job_application.job_post_id
-            WHERE company.hidden = 0 ORDER BY {}",
-            Self::DEFAULT_ORDER
+            WHERE company.hidden = 0 ORDER BY ",
         );
-        sqlx::query_as::<_, Self>(&sql)
+        query.push(Self::DEFAULT_ORDER);
+        query
+            .build_query_as()
             .fetch_all(executor)
             .await
             .map_err(Into::into)
@@ -131,9 +132,26 @@ impl JobPost {
     }
 
     pub async fn delete(id: i64, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
+        // println!("id: {}", id);
+        let mut tx = executor.begin().await?;
+
+        sqlx::query!("DELETE FROM job_application WHERE job_post_id = ?", id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                eprintln!("Failed to delete job_application: {}", e);
+                e
+            })?;
+
         sqlx::query!("DELETE FROM job_post WHERE id = ?", id)
-            .execute(executor)
-            .await?;
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                eprintln!("Failed to delete job_post: {}", e);
+                e
+            })?;
+
+        tx.commit().await?;
 
         Ok(())
     }
