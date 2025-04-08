@@ -707,9 +707,9 @@ impl JobHunter {
         self.filter_onsite = false;
         self.filter_hybrid = false;
         self.filter_remote = false;
-        self.job_posts = tokio::runtime::Handle::current()
-            .block_on(JobPost::fetch_all(&self.db.clone()))
-            .expect("Failed to get job posts");
+        // self.job_posts = tokio::runtime::Handle::current()
+        //     .block_on(JobPost::fetch_all(&self.db.clone()))
+        //     .expect("Failed to get job posts");
     }
 
     // fn filter_results(&mut self) {
@@ -852,6 +852,7 @@ impl JobHunter {
                     .map(Message::WindowOpened)
             }
             Message::WindowOpened(id) => {
+                // println!("WindowOpened");
                 let window = Window::new();
                 let focus_input = text_input::focus(format!("input-{id}")); // ?
                 self.windows.insert(id, window);
@@ -1333,7 +1334,19 @@ impl JobHunter {
             }
             Message::ResetFilters => {
                 self.reset_filters();
-                Task::none()
+                Task::perform(
+                    JobHunter::filter_results(
+                        self.db.clone(),
+                        self.filter_job_title.clone(),
+                        self.filter_location.clone(),
+                        self.filter_min_yoe,
+                        self.filter_max_yoe,
+                        self.filter_onsite,
+                        self.filter_hybrid,
+                        self.filter_remote,
+                    ),
+                    |job_posts| Message::ResultsFiltered(job_posts),
+                )
             }
             Message::FilterResults => {
                 // self.filter_results();
