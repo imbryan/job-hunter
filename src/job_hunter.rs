@@ -942,7 +942,9 @@ impl JobHunter {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        Company::delete(id as i64, &pool).await.unwrap();
+                        Company::delete(id as i64, &pool)
+                            .await
+                            .expect("Failed to delete company");
                         let companies_res = Company::fetch_all(&pool).await;
                         _ = sender.send(companies_res);
                     });
@@ -952,8 +954,22 @@ impl JobHunter {
                         .expect("Failed to get companies")
                 };
                 // self.companies = Company::get_all(&self.db).expect("Failed to get companies");
+                self.job_posts.retain(|job_post| job_post.company_id != id); // Update companies before job_posts = ERROR
                 self.companies = companies;
-                Task::none()
+                // Task::none()
+                Task::perform(
+                    JobHunter::filter_results(
+                        self.db.clone(),
+                        self.filter_job_title.clone(),
+                        self.filter_location.clone(),
+                        self.filter_min_yoe,
+                        self.filter_max_yoe,
+                        self.filter_onsite,
+                        self.filter_hybrid,
+                        self.filter_remote,
+                    ),
+                    |job_posts| Message::ResultsFiltered(job_posts),
+                )
             }
             Message::ToggleCompanyDropdown(id) => {
                 let current_val = match self.company_dropdowns.get(&id) {
@@ -1866,7 +1882,7 @@ impl JobHunter {
                             self.job_posts.clone()
                                 .into_iter()
                                 .map(|job_post| {
-                                    // println!("id: {}", job_post.id);
+                                    // println!("job_post.id: {} job_post.company_id: {}", job_post.id, job_post.company_id);
                                     // let company = Company::get(&self.db, job_post.company_id).unwrap();
                                     let company = {
                                         let pool = self.db.clone();
