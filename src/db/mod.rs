@@ -2,13 +2,28 @@ use chrono::{DateTime, NaiveDate, Utc};
 use sqlx::{
     encode::IsNull,
     error::BoxDynError,
-    sqlite::{SqlitePoolOptions, SqliteTypeInfo, SqliteValueRef},
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteTypeInfo, SqliteValueRef},
     Database, Decode, Encode, Sqlite, SqlitePool, Type,
 };
 
 pub mod company;
 pub mod job_application;
 pub mod job_post;
+
+/* Database */
+
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+static LAST_RUSQL_MIGRATION: i64 = 9;
+
+pub async fn create(url: &str) -> SqlitePool {
+    SqlitePool::connect_with(
+        SqliteConnectOptions::new()
+            .filename(url)
+            .create_if_missing(true),
+    )
+    .await
+    .expect("Failed to create database")
+}
 
 pub async fn connect(url: &str) -> SqlitePool {
     SqlitePoolOptions::new()
@@ -18,8 +33,59 @@ pub async fn connect(url: &str) -> SqlitePool {
         .expect("Failed to open database")
 }
 
+pub async fn bootstrap_sqlx_migrations(pool: &sqlx::SqlitePool) {
+    let table_exists: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    if table_exists.is_none() {
+        sqlx::query(
+            r#"
+            CREATE TABLE _sqlx_migrations (
+                version BIGINT PRIMARY KEY,
+                description TEXT NOT NULL,
+                installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                success BOOLEAN NOT NULL,
+                checksum BLOB NOT NULL,
+                execution_time BIGINT NOT NULL
+            );
+            "#,
+        )
+        .execute(pool)
+        .await;
+
+        println!("_sqlx_migrations table created");
+    }
+
+    let row_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+    if row_count == 0 {
+        for migration in MIGRATOR.iter() {
+            let migration = migration.clone();
+            sqlx::query(
+                    "INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time) VALUES (?, ?, CURRENT_TIMESTAMP, 1, ?, 0)"
+                )
+                .bind(migration.version)
+                .bind(migration.description)
+                .bind(migration.checksum.to_vec())
+                .execute(pool)
+                .await;
+            if migration.version >= LAST_RUSQL_MIGRATION {
+                break;
+            }
+        }
+        println!("_sqlx_migrations legacy rows populated");
+    }
+}
+
 pub async fn migrate(acquirable: impl sqlx::Acquire<'_, Database = sqlx::sqlite::Sqlite>) {
-    sqlx::migrate!("./migrations")
+    MIGRATOR
         .run(acquirable)
         .await
         .expect("Failed to run migrations")
@@ -107,9 +173,7 @@ impl From<Option<i64>> for NullableSqliteDateTime {
             return Self(None);
         };
 
-        let ret = DateTime::from_timestamp(ts, 0).inspect(|_| {
-            println!("Failed to convert timestamp to DateTime");
-        });
+        let ret = DateTime::from_timestamp(ts, 0);
 
         Self(ret.as_ref().map(DateTime::date_naive))
     }
@@ -169,5 +233,43 @@ impl<'q> Encode<'q, Sqlite> for NullableSqliteDateTime {
             .and_utc()
             .timestamp();
         <i64 as Encode<Sqlite>>::encode(timestamp, buf)
+    }
+}
+
+/* SqliteBoolean */
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct SqliteBoolean(pub bool);
+
+impl From<i64> for SqliteBoolean {
+    fn from(value: i64) -> Self {
+        match value {
+            0 => Self(false),
+            1 => Self(true),
+            _ => panic!("Invalid i64 to bool"),
+        }
+    }
+}
+
+impl Type<Sqlite> for SqliteBoolean {
+    fn type_info() -> SqliteTypeInfo {
+        <i64 as Type<Sqlite>>::type_info()
+    }
+}
+
+impl<'r> Decode<'r, Sqlite> for SqliteBoolean {
+    fn decode(value: <Sqlite as Database>::ValueRef<'r>) -> Result<Self, BoxDynError> {
+        let value: i64 = <i64 as Decode<Sqlite>>::decode(value)?;
+        Ok(Self::from(value))
+    }
+}
+
+impl<'q> Encode<'q, Sqlite> for SqliteBoolean {
+    fn encode_by_ref(
+        &self,
+        buf: &mut <Sqlite as Database>::ArgumentBuffer<'q>,
+    ) -> Result<IsNull, BoxDynError> {
+        let value = if self.0 { 1i64 } else { 0i64 };
+        <i64 as Encode<Sqlite>>::encode(value, buf)
     }
 }

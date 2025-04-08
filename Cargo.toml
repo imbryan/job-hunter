@@ -6,12 +6,14 @@ repository = "https://github.com/imbryan/job-hunter"
 edition = "2021"
 
 [dependencies]
-chrono = "0.4.39"
-clap = { version = "4.0", features = ["derive"] }
-iced = "0.13.1"
+anyhow = "1.0.95"
+chrono = { version = "0.4.39", features = ["serde"] }
+clap = { version = "4.5.26", features = ["cargo", "derive", "env"] }
+iced = { version = "0.13.1", features = ["tokio"] }
 iced_aw = { version = "0.11", default-features = false, features = ["badge", "date_picker", "drop_down", "number_input", "selection_list" ] }
 iced_font_awesome = "0.2.0"
 include_dir = "0.7.4"
+serde = { version = "1.0.217", features = ["derive"]}
 sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite", "migrate"] }
 thirtyfour = "0.35.0"
 tokio = { version = "1.43.0", features = ["full", "rt-multi-thread"] }
