@@ -326,10 +326,10 @@ impl JobHunter {
                     ]
                     .spacing(5),
                     row![
-                        container(button(text("Save")).on_press(submit_message.clone()))
+                        container(button(text("Cancel")).on_press(Message::HideModal))
                             .width(Fill)
                             .align_x(Alignment::End),
-                        button(text("Cancel")).on_press(Message::HideModal)
+                        container(button(text("Save")).on_press(submit_message.clone())),
                     ]
                     .spacing(10)
                     .width(Fill)
@@ -422,10 +422,10 @@ impl JobHunter {
                     .width(Fill),
                     column![text("Status").size(12), job_status_select,].spacing(5),
                     row![
-                        container(button(text("Save")).on_press(submit_message.clone()))
+                        container(button(text("Cancel")).on_press(Message::HideModal))
                             .width(Fill)
                             .align_x(Alignment::End),
-                        button(text("Cancel")).on_press(Message::HideModal)
+                        container(button(text("Save")).on_press(submit_message.clone()))
                     ]
                     .spacing(10)
                     .width(Fill),
@@ -647,10 +647,10 @@ impl JobHunter {
                     .spacing(15),
                     // Save row
                     row![
-                        container(button(text("Save")).on_press(submit_message.clone()))
+                        container(button(text("Cancel")).on_press(Message::HideModal))
                             .width(Fill)
                             .align_x(Alignment::End),
-                        button(text("Cancel")).on_press(Message::HideModal)
+                        container(button(text("Save")).on_press(submit_message.clone()))
                     ]
                     .spacing(10)
                     .width(Fill)
