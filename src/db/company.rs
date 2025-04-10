@@ -83,6 +83,14 @@ impl Company {
         Ok(())
     }
 
+    pub async fn solo(id: i64, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
+        sqlx::query!("UPDATE company SET hidden = 1 WHERE id != $1", id)
+            .execute(executor)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn delete(id: i64, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
         let mut tx = executor.begin().await?;
 

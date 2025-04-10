@@ -110,6 +110,7 @@ pub enum Message {
     ShowAllCompanies,
     HideCompany(i64),
     CompanyScroll(iced::widget::scrollable::Viewport),
+    SoloCompany(i64),
     // JobApplication
     CreateApplication,
     EditApplication,
@@ -1096,6 +1097,38 @@ impl JobHunter {
                 self.company_scroll = viewport.absolute_offset().y;
                 Task::none()
             }
+            Message::SoloCompany(id) => {
+                let companies = {
+                    let pool = self.db.clone();
+                    let (sender, receiver) = std::sync::mpsc::channel();
+                    self.tokio_handle.spawn(async move {
+                        Company::solo(id, &pool)
+                            .await
+                            .expect("Failed to solo company");
+                        let companies_res = Company::fetch_all(&pool).await;
+                        _ = sender.send(companies_res);
+                    });
+                    receiver
+                        .recv()
+                        .expect("Failed to receive companies_res")
+                        .expect("Failed to get companies")
+                };
+                self.companies = companies;
+                self.company_dropdowns.insert(id, false);
+                Task::perform(
+                    JobHunter::filter_results(
+                        self.db.clone(),
+                        self.filter_job_title.clone(),
+                        self.filter_location.clone(),
+                        self.filter_min_yoe,
+                        self.filter_max_yoe,
+                        self.filter_onsite,
+                        self.filter_hybrid,
+                        self.filter_remote,
+                    ),
+                    |job_posts| Message::ResultsFiltered(job_posts),
+                )
+            }
             /* Job Application */
             Message::CreateApplication => {
                 if self.job_app_status == None {
@@ -1721,6 +1754,9 @@ impl JobHunter {
                                         column(vec![
                                             button(text("Edit"))
                                                 .on_press(Message::ShowEditCompanyModal(company_id))
+                                                .into(),
+                                            button(text("Solo"))
+                                                .on_press(Message::SoloCompany(company_id))
                                                 .into(),
                                             button(text("Hide"))
                                                 .on_press(Message::HideCompany(company_id))
