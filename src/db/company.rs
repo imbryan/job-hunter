@@ -33,10 +33,14 @@ impl Company {
 
     pub async fn fetch_by_name(
         name: &str,
+        include_hidden: bool,
         executor: &sqlx::SqlitePool,
     ) -> anyhow::Result<Vec<Self>> {
         let mut query = QueryBuilder::new("SELECT * FROM company WHERE name LIKE ");
         query.push_bind(format!("%{}%", name));
+        if !include_hidden {
+            query.push(" AND hidden = 0 ");
+        }
         query.push(" ORDER BY ");
         query.push(Self::DEFAULT_ORDER);
         query

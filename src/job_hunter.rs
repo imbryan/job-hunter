@@ -1359,7 +1359,7 @@ impl JobHunter {
                     let (sender, receiver) = std::sync::mpsc::channel();
                     let name = self.filter_company_name.clone();
                     self.tokio_handle.spawn(async move {
-                        let companies_res = Company::fetch_by_name(&name, &pool).await;
+                        let companies_res = Company::fetch_by_name(&name, false, &pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -1376,9 +1376,10 @@ impl JobHunter {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        Company::show_all(&pool)
-                            .await
-                            .expect("Failed to show companies");
+                        // ? Probably want to decouple hiding from the filter
+                        // Company::show_all(&pool)
+                        //     .await
+                        //     .expect("Failed to show companies");
                         let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
@@ -1628,7 +1629,8 @@ impl JobHunter {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        let companies_res = Company::fetch_by_name(&company_name, &pool).await;
+                        let companies_res =
+                            Company::fetch_by_name(&company_name, true, &pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
