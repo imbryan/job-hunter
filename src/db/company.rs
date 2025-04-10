@@ -1,4 +1,5 @@
 use super::SqliteBoolean;
+use sqlx::QueryBuilder;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, sqlx::FromRow)]
 pub struct Company {
@@ -9,14 +10,18 @@ pub struct Company {
 }
 
 impl Company {
-    pub async fn fetch_all(executor: &sqlx::SqlitePool) -> anyhow::Result<Vec<Self>> {
-        sqlx::query_as!(
-            Self,
-            "SELECT id, name, careers_url, hidden FROM company WHERE hidden = 0 ORDER BY name ASC"
-        )
-        .fetch_all(executor)
-        .await
-        .map_err(Into::into)
+    pub const DEFAULT_ORDER: &str = "name ASC";
+
+    pub async fn fetch_shown(executor: &sqlx::SqlitePool) -> anyhow::Result<Vec<Self>> {
+        let mut query = QueryBuilder::new(
+            "SELECT id, name, careers_url, hidden FROM company WHERE hidden = 0 ORDER BY ",
+        );
+        query.push(Self::DEFAULT_ORDER);
+        query
+            .build_query_as()
+            .fetch_all(executor)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn fetch_one(id: i64, executor: &sqlx::SqlitePool) -> anyhow::Result<Option<Self>> {
@@ -30,14 +35,15 @@ impl Company {
         name: &str,
         executor: &sqlx::SqlitePool,
     ) -> anyhow::Result<Vec<Self>> {
-        sqlx::query_as!(
-            Self,
-            "SELECT * FROM company WHERE name LIKE '%' || $1 || '%'",
-            name,
-        )
-        .fetch_all(executor)
-        .await
-        .map_err(Into::into)
+        let mut query = QueryBuilder::new("SELECT * FROM company WHERE name LIKE ");
+        query.push_bind(format!("%{}%", name));
+        query.push(" ORDER BY ");
+        query.push(Self::DEFAULT_ORDER);
+        query
+            .build_query_as()
+            .fetch_all(executor)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn insert(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {

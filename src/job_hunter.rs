@@ -750,9 +750,11 @@ impl JobHunter {
                 self.filter_onsite,
                 self.filter_hybrid,
                 self.filter_remote,
+                self.filter_company_name.clone(),
             ),
             |job_posts| Message::ResultsFiltered(job_posts),
         )
+        .into()
     }
 
     async fn filter_results(
@@ -764,6 +766,7 @@ impl JobHunter {
         filter_onsite: bool,
         filter_hybrid: bool,
         filter_remote: bool,
+        filter_company_name: String,
     ) -> Vec<JobPost> {
         let mut query = QueryBuilder::new(
             "SELECT job_post.* FROM job_post JOIN company ON job_post.company_id = company.id
@@ -772,6 +775,11 @@ impl JobHunter {
         // WHERE
         // company.hidden
         query.push(" company.hidden = 0 ");
+        // company.name
+        if !(filter_company_name).is_empty() {
+            query.push(" AND company.name LIKE ");
+            query.push_bind(format!("%{}%", filter_company_name.clone()));
+        }
         // years of experience
         if !(filter_min_yoe == filter_max_yoe && filter_max_yoe == 0) {
             query.push(" AND min_yoe = ").push_bind(filter_min_yoe);
@@ -882,7 +890,7 @@ impl JobHunter {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -940,7 +948,7 @@ impl JobHunter {
                     };
                     self.tokio_handle.spawn(async move {
                         Company::insert(&company, &pool).await.unwrap();
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -966,7 +974,7 @@ impl JobHunter {
                         Company::delete(id as i64, &pool)
                             .await
                             .expect("Failed to delete company");
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -978,7 +986,7 @@ impl JobHunter {
                 self.job_posts.retain(|job_post| job_post.company_id != id); // Update companies before job_posts = ERROR
                 self.companies = companies;
                 // Task::none()
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             Message::ToggleCompanyDropdown(id) => {
                 let current_val = match self.company_dropdowns.get(&id) {
@@ -1011,7 +1019,7 @@ impl JobHunter {
                             .update(&pool)
                             .await
                             .expect("Failed to update company");
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -1039,7 +1047,7 @@ impl JobHunter {
                         Company::hide(id, &pool)
                             .await
                             .expect("Failed to hide company");
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -1051,7 +1059,7 @@ impl JobHunter {
                 self.company_dropdowns.remove(&id);
                 // self.filter_results();
                 // Task::none()
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             Message::ShowAllCompanies => {
                 // let _ = Company::show_all(&self.db).expect("Failed to show companies");
@@ -1063,7 +1071,7 @@ impl JobHunter {
                         Company::show_all(&pool)
                             .await
                             .expect("Failed to show companies");
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -1075,7 +1083,7 @@ impl JobHunter {
                 self.filter_company_name = "".to_string();
                 // self.filter_results();
                 // Task::none()
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             // https://github.com/iced-rs/iced_aw/issues/300#issuecomment-2563377964
             Message::CompanyScroll(viewport) => {
@@ -1090,7 +1098,7 @@ impl JobHunter {
                         Company::solo(id, &pool)
                             .await
                             .expect("Failed to solo company");
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -1100,7 +1108,7 @@ impl JobHunter {
                 };
                 self.companies = companies;
                 self.company_dropdowns.insert(id, false);
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             /* Job Application */
             Message::CreateApplication => {
@@ -1131,7 +1139,7 @@ impl JobHunter {
                 // self.filter_results();
                 self.hide_modal();
                 // Task::none()
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             Message::EditApplication => {
                 let app_id = match self.job_app_id {
@@ -1165,7 +1173,7 @@ impl JobHunter {
                 // self.filter_results();
                 self.hide_modal();
                 // Task::none()
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             /* Job Post */
             Message::DeleteJobPost(id) => {
@@ -1351,28 +1359,7 @@ impl JobHunter {
                     let (sender, receiver) = std::sync::mpsc::channel();
                     let name = self.filter_company_name.clone();
                     self.tokio_handle.spawn(async move {
-                        let mut tx = pool.begin().await.expect("Failed to begin transaction");
-
-                        let pattern = format!("%{}%", &name.clone());
-                        sqlx::query!(
-                            "UPDATE COMPANY set hidden = 1 WHERE name NOT LIKE ?",
-                            pattern
-                        )
-                        .execute(&mut *tx)
-                        .await
-                        .expect("Failed to hide companies");
-
-                        // let companies_res = Company::fetch_by_name(&name, &pool).await;
-
-                        let companies_res = sqlx::query_as!(
-                            Company,
-                            "SELECT * FROM company WHERE name LIKE ?",
-                            pattern
-                        )
-                        .fetch_all(&mut *tx)
-                        .await;
-
-                        tx.commit().await.expect("Failed to commit transaction");
+                        let companies_res = Company::fetch_by_name(&name, &pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -1381,7 +1368,7 @@ impl JobHunter {
                         .expect("Failed to get companies")
                 };
                 self.companies = companies_by_name;
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             Message::ResetFilters => {
                 self.reset_filters();
@@ -1392,7 +1379,7 @@ impl JobHunter {
                         Company::show_all(&pool)
                             .await
                             .expect("Failed to show companies");
-                        let companies_res = Company::fetch_all(&pool).await;
+                        let companies_res = Company::fetch_shown(&pool).await;
                         _ = sender.send(companies_res);
                     });
                     receiver
@@ -1401,11 +1388,11 @@ impl JobHunter {
                         .expect("Failed to get companies")
                 };
                 self.companies = companies;
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             Message::FilterResults => {
                 // self.filter_results();
-                self.get_filter_task().into()
+                self.get_filter_task()
             }
             Message::ResultsFiltered(job_posts) => {
                 self.job_posts = job_posts;
