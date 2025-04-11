@@ -68,6 +68,7 @@ pub struct JobHunter {
     job_app_status: Option<JobApplicationStatus>,
     job_app_status_index: Option<usize>,
     job_app_applied: Option<Date>,
+    job_app_interviewed: bool,
     pick_job_app_applied: bool,
     job_app_responded: Option<Date>,
     pick_job_app_responded: bool,
@@ -261,6 +262,7 @@ impl JobHunter {
                 job_app_status: None,
                 job_app_status_index: None,
                 job_app_applied: None,
+                job_app_interviewed: false,
                 pick_job_app_applied: false,
                 job_app_responded: None,
                 pick_job_app_responded: false,
@@ -1115,13 +1117,16 @@ impl JobHunter {
                 if self.job_app_status == None {
                     return Task::none(); // TODO feedback
                 }
-                let new_app = JobApplication {
-                    id: 0,
-                    job_post_id: self.job_post_id.unwrap() as i64,
-                    status: self.job_app_status.clone().unwrap(),
-                    date_applied: NullableSqliteDateTime::from(self.job_app_applied),
-                    date_responded: NullableSqliteDateTime::from(self.job_app_responded),
-                };
+                let interviewed = self.job_app_status == Some(JobApplicationStatus::Interview);
+                self.job_app_interviewed = interviewed;
+                let new_app = JobApplication::new(
+                    0,
+                    self.job_post_id.unwrap() as i64,
+                    self.job_app_status.clone().unwrap(),
+                    self.job_app_applied,
+                    self.job_app_responded,
+                    self.job_app_interviewed,
+                );
                 // let _ = JobApplication::create(&self.db, new_app);
                 // let _ = new_app.insert(&mut self.db);
                 {
@@ -1149,12 +1154,20 @@ impl JobHunter {
                 if self.job_app_status == None {
                     return Task::none(); // TODO feedback
                 }
+                // Only modify "interviewed" if the "Interview" status matches, else persist previous value
+                let interviewed = if self.job_app_status == Some(JobApplicationStatus::Interview) {
+                    true
+                } else {
+                    self.job_app_interviewed
+                };
+                self.job_app_interviewed = interviewed;
                 let app = JobApplication::new(
                     app_id,
                     self.job_post_id.unwrap(),
                     self.job_app_status.clone().unwrap(),
                     self.job_app_applied,
                     self.job_app_responded,
+                    self.job_app_interviewed,
                 );
                 // let _ =
                 //     JobApplication::update(&self.db, app).expect("Failed to update application");
@@ -1443,6 +1456,7 @@ impl JobHunter {
                 self.job_app_status = Some(JobApplicationStatus::Applied);
                 self.job_post_id = Some(job_post_id);
                 self.job_app_applied = Some(Date::today());
+                self.job_app_interviewed = false;
                 self.modal = Modal::CreateApplicationModal;
                 Task::none()
             }
@@ -1470,6 +1484,7 @@ impl JobHunter {
                 self.job_app_status = Some(application.status);
                 self.job_app_applied = application.date_applied.into();
                 self.job_app_responded = application.date_responded.into();
+                self.job_app_interviewed = application.interviewed.0;
                 self.modal = Modal::EditApplicationModal;
                 Task::none()
             }
@@ -1974,6 +1989,7 @@ impl JobHunter {
                                                 status: JobApplicationStatus::New,
                                                 date_applied: Default::default(),
                                                 date_responded: Default::default(),
+                                                interviewed: SqliteBoolean(false),
                                             };
                                             apply_text = "Apply";
                                             apply_msg = Message::ShowCreateApplicationModal(job_post.id);

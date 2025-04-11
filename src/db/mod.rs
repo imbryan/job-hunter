@@ -251,6 +251,18 @@ impl From<i64> for SqliteBoolean {
     }
 }
 
+impl From<bool> for SqliteBoolean {
+    fn from(value: bool) -> Self {
+        Self(value)
+    }
+}
+
+impl From<SqliteBoolean> for bool {
+    fn from(value: SqliteBoolean) -> bool {
+        value.0
+    }
+}
+
 impl Type<Sqlite> for SqliteBoolean {
     fn type_info() -> SqliteTypeInfo {
         <i64 as Type<Sqlite>>::type_info()

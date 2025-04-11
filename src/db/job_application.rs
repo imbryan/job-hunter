@@ -1,6 +1,6 @@
 use iced::advanced::clipboard::Null;
 
-use super::NullableSqliteDateTime;
+use super::{NullableSqliteDateTime, SqliteBoolean};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, sqlx::Type)]
 #[sqlx(type_name = "job_application_status")]
@@ -72,6 +72,7 @@ pub struct JobApplication {
     pub status: JobApplicationStatus,
     pub date_applied: NullableSqliteDateTime,
     pub date_responded: NullableSqliteDateTime,
+    pub interviewed: SqliteBoolean,
 }
 
 impl JobApplication {
@@ -81,6 +82,7 @@ impl JobApplication {
         status: JobApplicationStatus,
         date_applied: Option<iced_aw::date_picker::Date>,
         date_responded: Option<iced_aw::date_picker::Date>,
+        interviewed: bool,
     ) -> Self {
         Self {
             id: app_id as i64,
@@ -88,6 +90,7 @@ impl JobApplication {
             status,
             date_applied: NullableSqliteDateTime::from(date_applied),
             date_responded: NullableSqliteDateTime::from(date_responded),
+            interviewed: SqliteBoolean(interviewed),
         }
     }
 
@@ -123,11 +126,12 @@ impl JobApplication {
 
     pub async fn insert(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
         sqlx::query!(
-            r#"INSERT INTO job_application (status, date_applied, date_responded, job_post_id) VALUES ($1, $2, $3, $4)"#,
+            r#"INSERT INTO job_application (status, date_applied, date_responded, job_post_id, interviewed) VALUES ($1, $2, $3, $4, $5)"#,
             self.status,
             self.date_applied,
             self.date_responded,
             self.job_post_id,
+            self.interviewed,
         )
         .execute(executor)
         .await?;
@@ -137,10 +141,11 @@ impl JobApplication {
 
     pub async fn update(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
         sqlx::query!(
-            r#"UPDATE job_application SET status = $1, date_applied = $2, date_responded = $3 WHERE id = $4"#,
+            r#"UPDATE job_application SET status = $1, date_applied = $2, date_responded = $3, interviewed = $4 WHERE id = $5"#,
             self.status,
             self.date_applied,
             self.date_responded,
+            self.interviewed,
             self.id,
         )
         .execute(executor)
