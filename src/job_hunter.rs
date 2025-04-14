@@ -95,12 +95,16 @@ pub struct JobHunter {
     primary_modal_field: Option<iced::widget::text_input::Id>,
     last_modal_field: Option<iced::widget::text_input::Id>,
     last_modal_field_focused: bool, // TODO https://discourse.iced.rs/t/use-focus-and-find-focused-with-text-input/671/5
+    apijobs_key: String,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     //Runtime
     Shutdown,
+    // Config
+    SaveSettings,
+    APIJobsKeyChanged(String),
     // Window
     OpenWindow,
     WindowOpened(window::Id),
@@ -171,6 +175,7 @@ pub enum Message {
     JobPostCompanyNameChanged(String),
     JobPostCompanyChanged(usize, Company),
     LastModalFieldFocused,
+    ShowSettingsModal,
 }
 
 pub struct Window {}
@@ -194,6 +199,7 @@ pub enum Modal {
     CreateJobPostModal,
     EditJobPostModal,
     AddJobPostModal,
+    SettingsModal,
 }
 
 // https://github.com/iced-rs/iced/blob/latest/examples/modal/src/main.rs
@@ -296,6 +302,7 @@ impl JobHunter {
                 primary_modal_field: None,
                 last_modal_field: None,
                 last_modal_field_focused: false,
+                apijobs_key: "".to_string(),
             },
             open.map(Message::WindowOpened),
         )
@@ -679,6 +686,39 @@ impl JobHunter {
         .into()
     }
 
+    fn settings_modal<'a>(&self, submit_message: Message) -> Element<'a, Message> {
+        container(
+            column![
+                text("Settings").size(24),
+                column![
+                    column![
+                        text("APIJobs API Key").size(12),
+                        text_input("", &self.apijobs_key)
+                            .id(self.primary_modal_field.clone().unwrap())
+                            .on_input(Message::APIJobsKeyChanged)
+                            .on_submit(submit_message.clone())
+                            .padding(5)
+                    ]
+                    .spacing(5),
+                    row![
+                        container(button(text("Cancel")).on_press(Message::HideModal))
+                            .width(Fill)
+                            .align_x(Alignment::End),
+                        container(button(text("Save")).on_press(submit_message.clone())),
+                    ]
+                    .spacing(10)
+                    .width(Fill)
+                ]
+                .spacing(10),
+            ]
+            .spacing(20),
+        )
+        .width(300)
+        .padding(10)
+        .style(container::rounded_box)
+        .into()
+    }
+
     fn hide_modal(&mut self) {
         self.modal = Modal::None;
         self.company_name = "".to_string(); // hmm...
@@ -711,6 +751,7 @@ impl JobHunter {
         self.job_post_company_index = None;
         self.primary_modal_field = None;
         self.last_modal_field = None;
+        self.apijobs_key = "".to_string();
     }
 
     fn reset_filters(&mut self) {
@@ -932,6 +973,22 @@ impl JobHunter {
                 } else {
                     Task::none()
                 }
+            }
+            /* Settings */
+            Message::SaveSettings => {
+                if self.apijobs_key == "" {
+                    return Task::none();
+                }
+                self.config.apijobs_key = self.apijobs_key.clone();
+                let toml_str =
+                    toml::to_string_pretty(&self.config).expect("Failed to serialize config");
+                std::fs::write("config.toml", toml_str).expect("Failed to write config");
+                self.hide_modal();
+                Task::none()
+            }
+            Message::APIJobsKeyChanged(key) => {
+                self.apijobs_key = key;
+                Task::none()
             }
             /* Company */
             Message::TrackNewCompany => {
@@ -1535,6 +1592,12 @@ impl JobHunter {
                 self.set_last_modal_field();
                 text_input::focus(self.primary_modal_field.clone().unwrap())
             }
+            Message::ShowSettingsModal => {
+                self.modal = Modal::SettingsModal;
+                self.apijobs_key = self.config.apijobs_key.clone();
+                self.set_primary_modal_field();
+                text_input::focus(self.primary_modal_field.clone().unwrap())
+            }
             /* Advanced modal fields */
             Message::PickJobApplicationApplied => {
                 self.pick_job_app_applied = true;
@@ -1790,10 +1853,18 @@ impl JobHunter {
                     })
                     ,
                     // Settings area
-                    text("")
+                    container(button(
+                        row![
+                                text("Settings"),
+                                fa_icon_solid("gear").size(15.0).color(color!(255, 255, 255)),
+                            ]
+                                .spacing(5)
+                                .align_y(Alignment::Center)
+                    ).on_press(Message::ShowSettingsModal))
                     .height(Length::FillPortion(1))
                     .width(Fill)
                     .align_x(Alignment::Center)
+                    .padding(Padding::from([0,0]).top(50))
                 ]
             )
             .width(Length::FillPortion(1))
@@ -2126,6 +2197,12 @@ impl JobHunter {
         ];
 
         match self.modal {
+            // Settings Modal
+            Modal::SettingsModal => {
+                let settings_content = self.settings_modal(Message::SaveSettings);
+
+                modal(main_window_content, settings_content, Message::HideModal)
+            }
             // Company Modals
             Modal::CreateCompanyModal => {
                 let create_company_content = self.company_modal(Message::TrackNewCompany);
