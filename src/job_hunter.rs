@@ -30,6 +30,7 @@ use crate::db::{
     job_post::{JobPost, JobPostLocationType},
     NullableSqliteDateTime, SqliteBoolean, SqliteDateTime,
 };
+use crate::AppConfig;
 
 use utils::*;
 
@@ -41,6 +42,8 @@ pub struct JobHunter {
     main_window: window::Id,
     // Databse
     db: sqlx::SqlitePool,
+    // Config
+    config: AppConfig,
     // Company
     companies: Vec<Company>,
     company_dropdowns: BTreeMap<i64, bool>,
@@ -224,7 +227,11 @@ where
 }
 
 impl JobHunter {
-    pub fn new(conn: sqlx::SqlitePool, handle: tokio::runtime::Handle) -> (Self, Task<Message>) {
+    pub fn new(
+        conn: sqlx::SqlitePool,
+        handle: tokio::runtime::Handle,
+        config: AppConfig,
+    ) -> (Self, Task<Message>) {
         // let mut conn = data::connect(db_path);
         // migrate(&mut conn);
 
@@ -240,6 +247,7 @@ impl JobHunter {
                 tokio_handle: handle,
                 companies: Vec::new(),
                 db: conn,
+                config: config,
                 windows: BTreeMap::new(),
                 main_window: id,
                 modal: Modal::None,

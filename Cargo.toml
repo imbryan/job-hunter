@@ -17,3 +17,4 @@ serde = { version = "1.0.217", features = ["derive"]}
 sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite", "migrate"] }
 thirtyfour = "0.35.0"
 tokio = { version = "1.43.0", features = ["full", "rt-multi-thread"] }
+toml = "0.8.20"
