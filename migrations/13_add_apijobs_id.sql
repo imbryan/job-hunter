@@ -1,0 +1,1 @@
+ALTER TABLE job_post ADD apijobs_id VARCHAR;
