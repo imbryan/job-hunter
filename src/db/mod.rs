@@ -165,6 +165,13 @@ impl NullableSqliteDateTime {
         };
         date.format(fmt).to_string()
     }
+
+    pub fn from_iso_str(s: &str) -> Self {
+        let dt = DateTime::parse_from_rfc3339(s)
+            .expect("Failed to parse iso string")
+            .with_timezone(&Utc);
+        Self(Some(dt.date_naive()))
+    }
 }
 
 impl From<Option<i64>> for NullableSqliteDateTime {
