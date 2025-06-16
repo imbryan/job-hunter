@@ -24,12 +24,14 @@ use sqlx::QueryBuilder;
 //     opt_str_from_db, Company, JobApplication, JobApplicationStatus, JobPost, JobPostLocationType,
 // };
 
+use crate::api;
 use crate::db::{
     company::Company,
     job_application::{JobApplication, JobApplicationStatus},
     job_post::{JobPost, JobPostLocationType},
     NullableSqliteDateTime, SqliteBoolean, SqliteDateTime,
 };
+use crate::AppConfig;
 
 use utils::*;
 
@@ -41,6 +43,8 @@ pub struct JobHunter {
     main_window: window::Id,
     // Databse
     db: sqlx::SqlitePool,
+    // Config
+    config: AppConfig,
     // Company
     companies: Vec<Company>,
     company_dropdowns: BTreeMap<i64, bool>,
@@ -92,12 +96,16 @@ pub struct JobHunter {
     primary_modal_field: Option<iced::widget::text_input::Id>,
     last_modal_field: Option<iced::widget::text_input::Id>,
     last_modal_field_focused: bool, // TODO https://discourse.iced.rs/t/use-focus-and-find-focused-with-text-input/671/5
+    apijobs_key: String,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     //Runtime
     Shutdown,
+    // Config
+    SaveSettings,
+    APIJobsKeyChanged(String),
     // Window
     OpenWindow,
     WindowOpened(window::Id),
@@ -136,6 +144,7 @@ pub enum Message {
     FilterJobTitleChanged(String),
     FilterLocationChanged(String),
     FilterCompanyNameChanged(String),
+    FindJobs,
     // Modal
     HideModal,
     ShowCreateCompanyModal,
@@ -168,6 +177,7 @@ pub enum Message {
     JobPostCompanyNameChanged(String),
     JobPostCompanyChanged(usize, Company),
     LastModalFieldFocused,
+    ShowSettingsModal,
 }
 
 pub struct Window {}
@@ -191,6 +201,7 @@ pub enum Modal {
     CreateJobPostModal,
     EditJobPostModal,
     AddJobPostModal,
+    SettingsModal,
 }
 
 // https://github.com/iced-rs/iced/blob/latest/examples/modal/src/main.rs
@@ -224,7 +235,11 @@ where
 }
 
 impl JobHunter {
-    pub fn new(conn: sqlx::SqlitePool, handle: tokio::runtime::Handle) -> (Self, Task<Message>) {
+    pub fn new(
+        conn: sqlx::SqlitePool,
+        handle: tokio::runtime::Handle,
+        config: AppConfig,
+    ) -> (Self, Task<Message>) {
         // let mut conn = data::connect(db_path);
         // migrate(&mut conn);
 
@@ -240,6 +255,7 @@ impl JobHunter {
                 tokio_handle: handle,
                 companies: Vec::new(),
                 db: conn,
+                config: config,
                 windows: BTreeMap::new(),
                 main_window: id,
                 modal: Modal::None,
@@ -288,6 +304,7 @@ impl JobHunter {
                 primary_modal_field: None,
                 last_modal_field: None,
                 last_modal_field_focused: false,
+                apijobs_key: "".to_string(),
             },
             open.map(Message::WindowOpened),
         )
@@ -671,6 +688,39 @@ impl JobHunter {
         .into()
     }
 
+    fn settings_modal<'a>(&self, submit_message: Message) -> Element<'a, Message> {
+        container(
+            column![
+                text("Settings").size(24),
+                column![
+                    column![
+                        text("APIJobs API Key").size(12),
+                        text_input("", &self.apijobs_key)
+                            .id(self.primary_modal_field.clone().unwrap())
+                            .on_input(Message::APIJobsKeyChanged)
+                            .on_submit(submit_message.clone())
+                            .padding(5)
+                    ]
+                    .spacing(5),
+                    row![
+                        container(button(text("Cancel")).on_press(Message::HideModal))
+                            .width(Fill)
+                            .align_x(Alignment::End),
+                        container(button(text("Save")).on_press(submit_message.clone())),
+                    ]
+                    .spacing(10)
+                    .width(Fill)
+                ]
+                .spacing(10),
+            ]
+            .spacing(20),
+        )
+        .width(300)
+        .padding(10)
+        .style(container::rounded_box)
+        .into()
+    }
+
     fn hide_modal(&mut self) {
         self.modal = Modal::None;
         self.company_name = "".to_string(); // hmm...
@@ -703,6 +753,7 @@ impl JobHunter {
         self.job_post_company_index = None;
         self.primary_modal_field = None;
         self.last_modal_field = None;
+        self.apijobs_key = "".to_string();
     }
 
     fn reset_filters(&mut self) {
@@ -924,6 +975,22 @@ impl JobHunter {
                 } else {
                     Task::none()
                 }
+            }
+            /* Settings */
+            Message::SaveSettings => {
+                if self.apijobs_key == "" {
+                    return Task::none();
+                }
+                self.config.apijobs_key = self.apijobs_key.clone();
+                let toml_str =
+                    toml::to_string_pretty(&self.config).expect("Failed to serialize config");
+                std::fs::write("config.toml", toml_str).expect("Failed to write config");
+                self.hide_modal();
+                Task::none()
+            }
+            Message::APIJobsKeyChanged(key) => {
+                self.apijobs_key = key;
+                Task::none()
             }
             /* Company */
             Message::TrackNewCompany => {
@@ -1310,6 +1377,9 @@ impl JobHunter {
                     job_title: self.job_title.clone(),
                     benefits: Some(self.benefits.clone()),
                     skills: Some(self.skills.clone()),
+                    pay_unit: Some("year".to_string()), // TODO
+                    currency: Some("USD".to_string()),  // TODO
+                    apijobs_id: None,
                 };
                 // let _ = JobPost::create(&self.db, post).expect("Failed to create job post");
                 let job_posts = {
@@ -1412,6 +1482,24 @@ impl JobHunter {
                 self.job_posts = job_posts;
                 Task::none()
             }
+            Message::FindJobs => Task::perform(
+                api::apijobs_job_search(
+                    self.config.apijobs_key.clone(),
+                    self.companies
+                        .iter()
+                        .map(|c| c.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    self.filter_job_title.clone(),
+                    self.filter_location.clone(),
+                    self.filter_min_yoe,
+                    self.filter_onsite,
+                    self.filter_hybrid,
+                    self.filter_remote,
+                    self.db.clone(),
+                ),
+                |_| Message::FilterResults,
+            ),
             /* Hide Modal */
             Message::HideModal => {
                 self.hide_modal();
@@ -1525,6 +1613,12 @@ impl JobHunter {
                 self.modal = Modal::AddJobPostModal;
                 self.set_primary_modal_field();
                 self.set_last_modal_field();
+                text_input::focus(self.primary_modal_field.clone().unwrap())
+            }
+            Message::ShowSettingsModal => {
+                self.modal = Modal::SettingsModal;
+                self.apijobs_key = self.config.apijobs_key.clone();
+                self.set_primary_modal_field();
                 text_input::focus(self.primary_modal_field.clone().unwrap())
             }
             /* Advanced modal fields */
@@ -1692,6 +1786,19 @@ impl JobHunter {
     }
 
     pub fn view(&self, id: window::Id) -> Element<Message> {
+        let mut find_jobs_btn = button(
+            row![
+                text("Find Jobs"),
+                fa_icon_solid("magnifying-glass")
+                    .size(15.0)
+                    .color(color!(255, 255, 255)),
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center),
+        );
+        if !self.config.apijobs_key.is_empty() {
+            find_jobs_btn = find_jobs_btn.on_press(Message::FindJobs);
+        }
         let main_window_content = row![
             // Sidemenu container
             container(
@@ -1782,10 +1889,18 @@ impl JobHunter {
                     })
                     ,
                     // Settings area
-                    text("")
+                    container(button(
+                        row![
+                                text("Settings"),
+                                fa_icon_solid("gear").size(15.0).color(color!(255, 255, 255)),
+                            ]
+                                .spacing(5)
+                                .align_y(Alignment::Center)
+                    ).on_press(Message::ShowSettingsModal))
                     .height(Length::FillPortion(1))
                     .width(Fill)
                     .align_x(Alignment::Center)
+                    .padding(Padding::from([0,0]).top(50))
                 ]
             )
             .width(Length::FillPortion(1))
@@ -1879,14 +1994,7 @@ impl JobHunter {
                                 .align_y(Alignment::Center)
                             )
                                 .on_press(Message::FilterResults),
-                            button(
-                                row![
-                                    text("Find Jobs"),
-                                    fa_icon_solid("magnifying-glass").size(15.0).color(color!(255,255,255)),
-                                ]
-                                .spacing(5)
-                                .align_y(Alignment::Center)
-                            ),
+                            find_jobs_btn,
                         ]
                         .spacing(10)
                         .width(Fill)
@@ -1917,9 +2025,10 @@ impl JobHunter {
                                     };
                                     // let location_text = format!("{} ({})", &job_post.location, &job_post.location_type);
                                     let location_type_style = match &job_post.location_type {
-                                        JobPostLocationType::Onsite => style::badge::warning,
+                                        JobPostLocationType::Onsite => style::badge::secondary,
                                         JobPostLocationType::Hybrid => style::badge::info,
                                         JobPostLocationType::Remote => style::badge::primary,
+                                        JobPostLocationType::Unknown => style::badge::warning,
                                     };
                                     // let posted_text = format!("{}", &job_post.date_posted.unwrap().format("%m/%d/%Y"));
                                     // let posted_text = match &job_post.date_posted {
@@ -2057,11 +2166,11 @@ impl JobHunter {
                                                 text(company.name).size(12),
                                                 row![
                                                     text(job_post.location).size(12),
-                                                    badge(text(format!("{}", &job_post.location_type)).size(12)).style(location_type_style),
                                                 ]
                                                     .spacing(5)
                                                     .align_y(Alignment::Center),
                                                 text(posted_text).size(12),
+                                                badge(text(format!("{}", &job_post.location_type)).size(12)).style(location_type_style),
                                             ]
                                                 .spacing(5)
                                                 .width(Length::FillPortion(2)),
@@ -2118,6 +2227,12 @@ impl JobHunter {
         ];
 
         match self.modal {
+            // Settings Modal
+            Modal::SettingsModal => {
+                let settings_content = self.settings_modal(Message::SaveSettings);
+
+                modal(main_window_content, settings_content, Message::HideModal)
+            }
             // Company Modals
             Modal::CreateCompanyModal => {
                 let create_company_content = self.company_modal(Message::TrackNewCompany);
@@ -2189,7 +2304,7 @@ impl JobHunter {
 //     }
 // }
 
-mod utils {
+pub mod utils {
     pub fn get_pay_i64(s: &str) -> Result<i64, String> {
         if let Ok(num) = s.parse::<f64>() {
             return Ok((num * 100.0).round() as i64);
@@ -2215,6 +2330,15 @@ mod utils {
                 }
             })
             .collect::<Vec<String>>()
+            .join(", ")
+    }
+
+    pub fn format_location(city: &str, region: &str, country: &str) -> String {
+        [city, region, country]
+            .iter()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim())
+            .collect::<Vec<_>>()
             .join(", ")
     }
 }

@@ -8,13 +8,15 @@ pub enum JobPostLocationType {
     Onsite,
     Hybrid,
     Remote,
+    Unknown,
 }
 
 impl JobPostLocationType {
-    pub const ALL: [JobPostLocationType; 3] = [
+    pub const ALL: [JobPostLocationType; 4] = [
         JobPostLocationType::Onsite,
         JobPostLocationType::Hybrid,
         JobPostLocationType::Remote,
+        JobPostLocationType::Unknown,
     ];
 
     pub fn name(&self) -> String {
@@ -22,6 +24,7 @@ impl JobPostLocationType {
             JobPostLocationType::Onsite => "Onsite".to_string(),
             JobPostLocationType::Hybrid => "Hybrid".to_string(),
             JobPostLocationType::Remote => "Remote".to_string(),
+            JobPostLocationType::Unknown => "Unknown".to_string(),
         }
     }
 }
@@ -34,6 +37,7 @@ impl std::str::FromStr for JobPostLocationType {
             "Onsite" => Ok(JobPostLocationType::Onsite),
             "Hybrid" => Ok(JobPostLocationType::Hybrid),
             "Remote" => Ok(JobPostLocationType::Remote),
+            "Unknown" => Ok(JobPostLocationType::Unknown),
             s => anyhow::bail!("Invalid JobPostLocationType: {s}"),
         }
     }
@@ -54,6 +58,7 @@ impl std::fmt::Display for JobPostLocationType {
             JobPostLocationType::Onsite => write!(f, "On-site"),
             JobPostLocationType::Hybrid => write!(f, "Hybrid"),
             JobPostLocationType::Remote => write!(f, "Remote"),
+            JobPostLocationType::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -74,6 +79,9 @@ pub struct JobPost {
     pub job_title: String,
     pub benefits: Option<String>,
     pub skills: Option<String>,
+    pub pay_unit: Option<String>, // TODO enum
+    pub currency: Option<String>,
+    pub apijobs_id: Option<String>,
 }
 
 impl JobPost {
@@ -109,8 +117,11 @@ impl JobPost {
                     date_posted = $8,
                     job_title = $9,
                     benefits = $10,
-                    skills = $11
-                WHERE id = $12
+                    skills = $11,
+                    date_retrieved = $12,
+                    company_id = $13,
+                    apijobs_id = $14
+                WHERE id = $15
             "#,
             self.location,
             self.location_type,
@@ -123,6 +134,9 @@ impl JobPost {
             self.job_title,
             self.benefits,
             self.skills,
+            self.date_retrieved,
+            self.company_id,
+            self.apijobs_id,
             self.id,
         )
         .execute(executor)
@@ -162,9 +176,9 @@ impl JobPost {
                 location, location_type, url,
                 min_yoe, max_yoe, min_pay_cents,
                 max_pay_cents, date_posted, job_title,
-                benefits, skills, date_retrieved, company_id
+                benefits, skills, date_retrieved, company_id, apijobs_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             "#,
             self.location,
             self.location_type,
@@ -179,6 +193,7 @@ impl JobPost {
             self.skills,
             self.date_retrieved,
             self.company_id,
+            self.apijobs_id,
         )
         .execute(executor)
         .await?;

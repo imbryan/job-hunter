@@ -50,8 +50,25 @@ impl Company {
             .map_err(Into::into)
     }
 
-    pub async fn insert(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
-        sqlx::query!(
+    pub async fn fetch_id_by_name(
+        name: &str,
+        executor: &sqlx::SqlitePool,
+    ) -> anyhow::Result<Option<i64>> {
+        let res = sqlx::query!(
+            r#"SELECT id FROM company WHERE name = $1
+                OR id = (
+                    SELECT company_id FROM company_alt_name WHERE name = $2 LIMIT 1
+                )"#,
+            name,
+            name
+        )
+        .fetch_optional(executor)
+        .await?;
+        Ok(res.map(|r| r.id))
+    }
+
+    pub async fn insert(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<i64> {
+        let res = sqlx::query!(
             "INSERT INTO company (name, careers_url, hidden) VALUES ($1, $2, $3)",
             self.name,
             self.careers_url,
@@ -60,7 +77,7 @@ impl Company {
         .execute(executor)
         .await?;
 
-        Ok(())
+        Ok(res.last_insert_rowid())
     }
 
     pub async fn update(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
