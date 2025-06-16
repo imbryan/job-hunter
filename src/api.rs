@@ -19,8 +19,8 @@ struct APIJobsJob {
     hiring_organization_name: String,
     // hiring_organization_url: Option<String>,
     country: String,
-    region: String,
-    city: String,
+    region: Option<String>,
+    city: Option<String>,
     base_salary_currency: Option<String>,
     base_salary_min_value: Option<f64>,
     base_salary_max_value: Option<f64>,
@@ -72,10 +72,18 @@ impl APIJobsJob {
             Some(skills_vec) => Some(skills_vec.join(",")),
             None => None,
         };
+        let region = match self.region {
+            Some(str) => str,
+            None => "".to_string(),
+        };
+        let city = match self.city {
+            Some(str) => str,
+            None => "".to_string(),
+        };
         JobPost {
             id: 0,
             company_id: company_id,
-            location: format_location(&self.city, &self.region, &self.country),
+            location: format_location(&city, &region, &self.country),
             location_type: JobPostLocationType::from(loc_type),
             url: self.url,
             min_yoe: yoe,
@@ -131,13 +139,27 @@ pub async fn apijobs_job_search(
         loc_types.push("remote");
     }
 
+    let loc_capitalized = {
+        location
+            .split_whitespace()
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
     let body = json!({
         "sort_by": "created_at",
         "sort_order": "desc",
         "title": job_title, // "q" is too broad compared to "title" see schema: https://www.apijobs.dev/documentation/api/openapi.html
         "hiring_organization_name": companies,
         // TODO: eventually, location on our side should be processed into subfields
-        "country": location, // TODO it REALLY wants countries capitalized
+        "country": loc_capitalized, // it REALLY wants countries capitalized
         // "region": location,
         // "city": location,
         "experience_requirements_months": min_yoe * 12,
