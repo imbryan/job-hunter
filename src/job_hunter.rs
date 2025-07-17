@@ -2114,6 +2114,12 @@ impl JobHunter {
                                         JobApplicationStatus::Rejected => style::badge::danger,
                                     };
 
+                                    let applied_text = match application.status {
+                                        JobApplicationStatus::Applied => application.date_applied.format("%m/%d/%Y"),
+                                        JobApplicationStatus::Interview | JobApplicationStatus::Offer | JobApplicationStatus::Rejected => application.date_responded.format("%m/%d/%Y"),
+                                        _ => "".to_string()
+                                    };
+
                                     // match app_id {
                                     //     Some(id) => {
                                     //         apply_text = "Apply";
@@ -2191,6 +2197,7 @@ impl JobHunter {
                                             column![
                                                 text("Status").size(12),
                                                 badge(text(status_text)).style(status_style),
+                                                text(applied_text).size(12),
                                             ]
                                                 .spacing(5)
                                                 .width(Length::FillPortion(1)),
