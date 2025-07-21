@@ -2004,6 +2004,11 @@ impl JobHunter {
                     .width(Fill)
                     .padding(Padding::from([0, 30]).top(20)),
                     // Job list
+                    container(
+                        text(format!("{} results", self.job_posts.len()))
+                    )
+                    .width(Fill)
+                    .padding(Padding::from([0, 30])),
                     scrollable(
                         Column::with_children(
                             self.job_posts.clone()
@@ -2217,7 +2222,7 @@ impl JobHunter {
                                 })
                         )
                             .spacing(15)
-                            .padding(Padding::from([20, 30]))
+                            .padding(Padding::from([20, 30]).top(0))
                     )
                         .on_scroll(|viewport| {
                             Message::JobPostScroll(viewport)
