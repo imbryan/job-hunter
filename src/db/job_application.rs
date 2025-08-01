@@ -11,16 +11,18 @@ pub enum JobApplicationStatus {
     Offer,
     Closed,
     Rejected,
+    Withdrawn,
 }
 
 impl JobApplicationStatus {
-    pub const ALL: [JobApplicationStatus; 6] = [
+    pub const ALL: [JobApplicationStatus; 7] = [
         JobApplicationStatus::New,
         JobApplicationStatus::Applied,
         JobApplicationStatus::Interview,
         JobApplicationStatus::Offer,
         JobApplicationStatus::Closed,
         JobApplicationStatus::Rejected,
+        JobApplicationStatus::Withdrawn,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -31,6 +33,7 @@ impl JobApplicationStatus {
             JobApplicationStatus::Offer => "Offer",
             JobApplicationStatus::Closed => "Closed",
             JobApplicationStatus::Rejected => "Rejected",
+            JobApplicationStatus::Withdrawn => "Withdrawn",
         }
     }
 }
@@ -46,6 +49,7 @@ impl std::str::FromStr for JobApplicationStatus {
             "Offer" => Ok(JobApplicationStatus::Offer),
             "Closed" => Ok(JobApplicationStatus::Closed),
             "Rejected" => Ok(JobApplicationStatus::Rejected),
+            "Withdrawn" => Ok(JobApplicationStatus::Withdrawn),
             _ => Err(()),
         }
     }

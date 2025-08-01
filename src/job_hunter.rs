@@ -2117,6 +2117,7 @@ impl JobHunter {
                                         JobApplicationStatus::Offer => style::badge::success,
                                         JobApplicationStatus::Closed => style::badge::danger,
                                         JobApplicationStatus::Rejected => style::badge::danger,
+                                        JobApplicationStatus::Withdrawn => style::badge::danger,
                                     };
 
                                     let applied_text = match application.status {
