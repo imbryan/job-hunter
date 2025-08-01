@@ -331,7 +331,7 @@ impl JobHunter {
                 text("Track Company").size(24),
                 column![
                     column![
-                        text("Company Name").size(12),
+                        text("Company Name*").size(12),
                         text_input("", &self.company_name) // hmm...
                             .id(self.primary_modal_field.clone().unwrap())
                             .on_input(Message::CompanyNameChanged)
@@ -340,7 +340,7 @@ impl JobHunter {
                     ]
                     .spacing(5),
                     column![
-                        text("Company's Careers Page URL").size(12),
+                        text("Company's Careers Page URL*").size(12),
                         text_input("", &self.careers_url)
                             .id(self.last_modal_field.clone().unwrap())
                             .on_input(Message::CareersURLChanged)
@@ -443,7 +443,7 @@ impl JobHunter {
                     ]
                     .spacing(15)
                     .width(Fill),
-                    column![text("Status").size(12), job_status_select,].spacing(5),
+                    column![text("Status*").size(12), job_status_select,].spacing(5),
                     row![
                         container(button(text("Cancel")).on_press(Message::HideModal))
                             .width(Fill)
@@ -547,7 +547,7 @@ impl JobHunter {
                 column![
                     row![
                         // Company name
-                        column![text("Company").size(12), company_element, company_select,]
+                        column![text("Company*").size(12), company_element, company_select,]
                             .width(Length::FillPortion(1))
                             .spacing(5),
                         // Date posted
@@ -563,12 +563,12 @@ impl JobHunter {
                     .spacing(15),
                     row![
                         // Title field
-                        column![text("Job Title").size(12), job_title_field,]
+                        column![text("Job Title*").size(12), job_title_field,]
                             .width(Length::FillPortion(1))
                             .spacing(5),
                         // URL
                         column![
-                            text("Job URL").size(12),
+                            text("Job URL*").size(12),
                             text_input("", &self.url)
                                 .on_input(Message::JobURLChanged)
                                 .on_submit(submit_message.clone())
@@ -581,7 +581,7 @@ impl JobHunter {
                     row![
                         // Location field
                         column![
-                            text("Location").size(12),
+                            text("Location*").size(12),
                             text_input("", &self.location)
                                 .on_input(Message::LocationChanged)
                                 .on_submit(submit_message.clone())
@@ -591,7 +591,7 @@ impl JobHunter {
                         .spacing(5),
                         // Location type
                         column![
-                            text("Location Type").size(12),
+                            text("Location Type*").size(12),
                             loc_type_select,
                             // .padding(5),
                         ]
