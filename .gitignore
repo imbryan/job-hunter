@@ -4,3 +4,4 @@
 *.db
 *.sqlx
 config.toml
+.sync-exclude.lst
