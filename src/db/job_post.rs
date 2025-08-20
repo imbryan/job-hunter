@@ -85,16 +85,28 @@ pub struct JobPost {
 }
 
 impl JobPost {
+    pub const DEFAULT_JOINS: &str = "JOIN company ON job_post.company_id = company.id LEFT JOIN job_application ON job_post.id = job_application.job_post_id";
+    pub const DEFAULT_WHERE: &str = "company.hidden = 0";
     pub const DEFAULT_ORDER: &str = "job_application.date_applied DESC NULLS FIRST, job_application.date_responded DESC, date_posted DESC, date_retrieved DESC";
 
-    pub async fn fetch_all(executor: &sqlx::SqlitePool) -> anyhow::Result<Vec<Self>> {
+    pub async fn fetch_all(
+        page: i64,
+        page_size: i64,
+        executor: &sqlx::SqlitePool,
+    ) -> anyhow::Result<Vec<Self>> {
         // println!("fetch all");
-        let mut query = sqlx::QueryBuilder::new(
-            "SELECT job_post.* FROM job_post JOIN company ON job_post.company_id = company.id
-            LEFT JOIN job_application on job_post.id = job_application.job_post_id
-            WHERE company.hidden = 0 ORDER BY ",
-        );
+        let offset = (page - 1) * page_size;
+        let mut query = sqlx::QueryBuilder::new("SELECT job_post.* FROM job_post");
+        query.push(" ");
+        query.push(Self::DEFAULT_JOINS);
+        query.push(" WHERE ");
+        query.push(Self::DEFAULT_WHERE);
+        query.push(" ORDER BY ");
         query.push(Self::DEFAULT_ORDER);
+        query.push(" LIMIT ");
+        query.push_bind(page_size);
+        query.push(" OFFSET ");
+        query.push_bind(offset);
         query
             .build_query_as()
             .fetch_all(executor)
@@ -102,47 +114,203 @@ impl JobPost {
             .map_err(Into::into)
     }
 
-    pub async fn update(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    pub async fn fetch_all_count(executor: &sqlx::SqlitePool) -> anyhow::Result<i64> {
+        let mut query = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM job_post");
+        query.push(" ");
+        query.push(Self::DEFAULT_JOINS);
+        query.push(" WHERE ");
+        query.push(Self::DEFAULT_WHERE);
+        query
+            .build_query_scalar()
+            .fetch_one(executor)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub fn add_filters(
+        mut query: sqlx::QueryBuilder<'_, sqlx::Sqlite>,
+        title: String,
+        location: String,
+        min_yoe: i64,
+        max_yoe: i64,
+        onsite: bool,
+        hybrid: bool,
+        remote: bool,
+        company_name: String,
+    ) -> sqlx::QueryBuilder<'_, sqlx::Sqlite> {
+        // company.name
+        if !(company_name).is_empty() {
+            query.push(" AND company.name LIKE ");
+            query.push_bind(format!("%{}%", company_name.clone()));
+        }
+        // years of experience
+        if !(min_yoe == max_yoe && max_yoe == 0) {
+            query.push(" AND min_yoe = ").push_bind(min_yoe);
+            if let Some(max_yoe) = (max_yoe > 0 && max_yoe > min_yoe).then_some(max_yoe) {
+                query.push(" AND max_yoe <= ").push_bind(max_yoe);
+            }
+        }
+        // job title
+        if !title.is_empty() {
+            query
+                .push(" AND job_title LIKE ")
+                .push_bind(format!("%{}%", title.clone())); // push_bind does the quoting
+        }
+        // location
+        if !location.is_empty() {
+            query
+                .push(" AND location LIKE ")
+                .push_bind(format!("%{}%", location.clone()));
+        }
+
+        // loc types
+        let mut job_loc_types = Vec::with_capacity(3);
+        if onsite {
+            job_loc_types.push(JobPostLocationType::Onsite.name());
+        }
+        if hybrid {
+            job_loc_types.push(JobPostLocationType::Hybrid.name());
+        }
+        if remote {
+            job_loc_types.push(JobPostLocationType::Remote.name());
+        }
+        if !job_loc_types.is_empty() {
+            query.push(" AND location_type IN (");
+            for (i, loc_type) in job_loc_types.iter().enumerate() {
+                if i > 0 {
+                    query.push(", ");
+                }
+                query.push_bind(loc_type.clone());
+            }
+            query.push(")");
+        }
+        query
+    }
+
+    pub async fn filter(
+        page: i64,
+        page_size: i64,
+        title: String,
+        location: String,
+        min_yoe: i64,
+        max_yoe: i64,
+        onsite: bool,
+        hybrid: bool,
+        remote: bool,
+        company_name: String,
+        executor: &sqlx::SqlitePool,
+    ) -> anyhow::Result<Vec<JobPost>> {
+        let offset = (page - 1) * page_size;
+        let mut query = sqlx::QueryBuilder::new("SELECT job_post.* FROM job_post");
+        query.push(" ");
+        query.push(Self::DEFAULT_JOINS);
+        // WHERE
+        query.push(" WHERE ");
+        // company.hidden
+        query.push(Self::DEFAULT_WHERE);
+        query = Self::add_filters(
+            query,
+            title,
+            location,
+            min_yoe,
+            max_yoe,
+            onsite,
+            hybrid,
+            remote,
+            company_name,
+        );
+        // ORDER BY
+        query.push(" ORDER BY ");
+        query.push(Self::DEFAULT_ORDER);
+        query.push(" LIMIT ");
+        query.push_bind(page_size);
+        query.push(" OFFSET ");
+        query.push_bind(offset);
+        // ---
+        // println!("{}", query.sql());
+        query
+            .build_query_as()
+            .fetch_all(executor)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn filter_count(
+        title: String,
+        location: String,
+        min_yoe: i64,
+        max_yoe: i64,
+        onsite: bool,
+        hybrid: bool,
+        remote: bool,
+        company_name: String,
+        executor: &sqlx::SqlitePool,
+    ) -> anyhow::Result<i64> {
+        let mut query = sqlx::QueryBuilder::new("SELECT COUNT(*) from job_post");
+        query.push(" ");
+        query.push(Self::DEFAULT_JOINS);
+        query.push(" WHERE ");
+        query.push(Self::DEFAULT_WHERE);
+        query = Self::add_filters(
+            query,
+            title,
+            location,
+            min_yoe,
+            max_yoe,
+            onsite,
+            hybrid,
+            remote,
+            company_name,
+        );
+        query
+            .build_query_scalar()
+            .fetch_one(executor)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn update(&self, executor: &sqlx::SqlitePool) -> anyhow::Result<Self> {
         let posted = self.date_posted.timestamp();
-        sqlx::query!(
+        let updated = sqlx::query_as::<_, Self>(
             r#"UPDATE job_post
                 SET
-                    location = $1,
-                    location_type = $2,
-                    url = $3,
-                    min_yoe = $4,
-                    max_yoe = $5,
-                    min_pay_cents = $6,
-                    max_pay_cents = $7,
-                    date_posted = $8,
-                    job_title = $9,
-                    benefits = $10,
-                    skills = $11,
-                    date_retrieved = $12,
-                    company_id = $13,
-                    apijobs_id = $14
-                WHERE id = $15
+                    location = ?,
+                    location_type = ?,
+                    url = ?,
+                    min_yoe = ?,
+                    max_yoe = ?,
+                    min_pay_cents = ?,
+                    max_pay_cents = ?,
+                    date_posted = ?,
+                    job_title = ?,
+                    benefits = ?,
+                    skills = ?,
+                    date_retrieved = ?,
+                    company_id = ?,
+                    apijobs_id = ?
+                WHERE id = ?
+                RETURNING *
             "#,
-            self.location,
-            self.location_type,
-            self.url,
-            self.min_yoe,
-            self.max_yoe,
-            self.min_pay_cents,
-            self.max_pay_cents,
-            posted,
-            self.job_title,
-            self.benefits,
-            self.skills,
-            self.date_retrieved,
-            self.company_id,
-            self.apijobs_id,
-            self.id,
         )
-        .execute(executor)
+        .bind(self.location.clone())
+        .bind(self.location_type)
+        .bind(self.url.clone())
+        .bind(self.min_yoe)
+        .bind(self.max_yoe)
+        .bind(self.min_pay_cents)
+        .bind(self.max_pay_cents)
+        .bind(posted)
+        .bind(self.job_title.clone())
+        .bind(self.benefits.clone())
+        .bind(self.skills.clone())
+        .bind(self.date_retrieved)
+        .bind(self.company_id)
+        .bind(self.apijobs_id.clone())
+        .bind(self.id)
+        .fetch_one(executor)
         .await?;
 
-        Ok(())
+        Ok(updated)
     }
 
     pub async fn delete(id: i64, executor: &sqlx::SqlitePool) -> anyhow::Result<()> {

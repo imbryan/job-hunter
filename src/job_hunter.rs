@@ -25,6 +25,7 @@ use sqlx::QueryBuilder;
 // };
 
 use crate::api;
+use crate::components::{IconButton, IconButtonMessage};
 use crate::db::{
     company::Company,
     job_application::{JobApplication, JobApplicationStatus},
@@ -52,6 +53,9 @@ pub struct JobHunter {
     job_posts: Vec<JobPost>,
     job_dropdowns: BTreeMap<i64, bool>,
     job_post_scroll: f32,
+    job_page: i64,
+    job_page_size: i64,
+    job_posts_total: usize,
     // Filter
     filter_min_yoe: i64,
     filter_max_yoe: i64,
@@ -128,6 +132,7 @@ pub enum Message {
     EditJobPost,
     CreateJobPost,
     JobPostScroll(iced::widget::scrollable::Viewport),
+    JobPageButtonPressed(i64),
     // Dropdown
     ToggleCompanyDropdown(i64),
     ToggleJobDropdown(i64),
@@ -304,6 +309,9 @@ impl JobHunter {
                 last_modal_field: None,
                 last_modal_field_focused: false,
                 apijobs_key: "".to_string(),
+                job_page: 1,
+                job_page_size: 10,
+                job_posts_total: 0,
             },
             open.map(Message::WindowOpened),
         )
@@ -792,111 +800,76 @@ impl JobHunter {
     // }
 
     fn get_filter_task(&mut self) -> Task<Message> {
+        let page = self.job_page;
+        let page_size = self.job_page_size;
+        let job_title = self.filter_job_title.clone();
+        let location = self.filter_location.clone();
+        let min_yoe = self.filter_min_yoe;
+        let max_yoe = self.filter_max_yoe;
+        let onsite = self.filter_onsite;
+        let hybrid = self.filter_hybrid;
+        let remote = self.filter_remote;
+        let company_name = self.filter_company_name.clone();
+        let db = self.db.clone();
+
         Task::perform(
-            JobHunter::filter_results(
-                self.db.clone(),
-                self.filter_job_title.clone(),
-                self.filter_location.clone(),
-                self.filter_min_yoe,
-                self.filter_max_yoe,
-                self.filter_onsite,
-                self.filter_hybrid,
-                self.filter_remote,
-                self.filter_company_name.clone(),
-            ),
-            |job_posts| Message::ResultsFiltered(job_posts),
+            async move {
+                JobPost::filter(
+                    page,
+                    page_size,
+                    job_title,
+                    location,
+                    min_yoe,
+                    max_yoe,
+                    onsite,
+                    hybrid,
+                    remote,
+                    company_name,
+                    &db,
+                )
+                .await
+                .map(|jobs| Message::ResultsFiltered(jobs))
+                .expect("Failed to filter job posts")
+            },
+            |msg| msg,
         )
         .into()
     }
 
-    async fn filter_results(
-        pool: sqlx::SqlitePool,
-        filter_title: String,
-        filter_location: String,
-        filter_min_yoe: i64,
-        filter_max_yoe: i64,
-        filter_onsite: bool,
-        filter_hybrid: bool,
-        filter_remote: bool,
-        filter_company_name: String,
-    ) -> Vec<JobPost> {
-        let mut query = QueryBuilder::new(
-            "SELECT job_post.* FROM job_post JOIN company ON job_post.company_id = company.id
-            LEFT JOIN job_application ON job_post.id = job_application.job_post_id WHERE",
-        );
-        // WHERE
-        // company.hidden
-        query.push(" company.hidden = 0 ");
-        // company.name
-        if !(filter_company_name).is_empty() {
-            query.push(" AND company.name LIKE ");
-            query.push_bind(format!("%{}%", filter_company_name.clone()));
-        }
-        // years of experience
-        if !(filter_min_yoe == filter_max_yoe && filter_max_yoe == 0) {
-            query.push(" AND min_yoe = ").push_bind(filter_min_yoe);
-            if let Some(max_yoe) =
-                (filter_max_yoe > 0 && filter_max_yoe > filter_min_yoe).then_some(filter_max_yoe)
-            {
-                query.push(" AND max_yoe <= ").push_bind(max_yoe);
-            }
-        }
-        // job title
-        if !filter_title.is_empty() {
-            query
-                .push(" AND job_title LIKE ")
-                // .push("'%")
-                // .push_bind(filter_title.clone())
-                // .push("%'");
-                .push_bind(format!("%{}%", filter_title.clone())); // push_bind does the quoting
-        }
-        // location
-        if !filter_location.is_empty() {
-            query
-                .push(" AND location LIKE ")
-                // .push("'%")
-                // .push_bind(filter_location.clone())
-                // .push("%'");
-                .push_bind(format!("%{}%", filter_location.clone()));
-        }
+    fn set_job_count(&mut self) {
+        let total_results = {
+            let pool = self.db.clone();
+            let title = self.filter_job_title.clone();
+            let location = self.filter_location.clone();
+            let min_yoe = self.filter_min_yoe;
+            let max_yoe = self.filter_max_yoe;
+            let onsite = self.filter_onsite;
+            let hybrid = self.filter_hybrid;
+            let remote = self.filter_remote;
+            let company_name = self.filter_company_name.clone();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            self.tokio_handle.spawn(async move {
+                let res = JobPost::filter_count(
+                    title,
+                    location,
+                    min_yoe,
+                    max_yoe,
+                    onsite,
+                    hybrid,
+                    remote,
+                    company_name,
+                    &pool,
+                )
+                .await;
+                _ = sender.send(res);
+            });
+            receiver
+                .recv()
+                .expect("Failed to receive res")
+                .expect("Failed to get job post count")
+        };
 
-        // loc types
-        let mut job_loc_types = Vec::with_capacity(3);
-        if filter_onsite {
-            job_loc_types.push(JobPostLocationType::Onsite.name());
-        }
-        if filter_hybrid {
-            job_loc_types.push(JobPostLocationType::Hybrid.name());
-        }
-        if filter_remote {
-            job_loc_types.push(JobPostLocationType::Remote.name());
-        }
-        if !job_loc_types.is_empty() {
-            query.push(" AND location_type IN (");
-            // .push_bind(job_loc_types.join(", "))
-            // .push(")");
-            for (i, loc_type) in job_loc_types.iter().enumerate() {
-                if i > 0 {
-                    query.push(", ");
-                }
-                query.push_bind(loc_type);
-            }
-            query.push(")");
-        }
-        // ORDER BY
-        query.push(" ORDER BY ");
-        query.push(JobPost::DEFAULT_ORDER);
-        // ---
-        // println!("{}", query.sql());
-        query
-            .build_query_as()
-            .fetch_all(&pool)
-            .await
-            .expect("Failed to filter job posts")
-    }
-
-    async fn shutdown(pool: sqlx::SqlitePool) {
-        pool.close().await;
+        self.job_posts_total = total_results as usize;
     }
 
     fn set_primary_modal_field(&mut self) {
@@ -952,9 +925,11 @@ impl JobHunter {
                 };
                 let jobs = {
                     let pool = self.db.clone();
+                    let page = self.job_page;
+                    let page_size = self.job_page_size;
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        let jobs_res = JobPost::fetch_all(&pool).await;
+                        let jobs_res = JobPost::fetch_all(page, page_size, &pool).await;
                         _ = sender.send(jobs_res);
                     });
                     receiver
@@ -962,15 +937,20 @@ impl JobHunter {
                         .expect("Failed to receive jobs_res")
                         .expect("Failed to get jobs")
                 };
+
                 self.companies = companies;
                 self.job_posts = jobs;
+                // self.job_posts_total = self.job_posts.len();
+                self.set_job_count();
                 focus_input
             }
             Message::WindowClosed(id) => {
                 self.windows.remove(&id);
 
+                let db = self.db.clone();
+
                 if self.windows.is_empty() || self.main_window == id {
-                    Task::perform(JobHunter::shutdown(self.db.clone()), |_| Message::Shutdown)
+                    Task::perform(crate::db::shutdown(db), |_| Message::Shutdown)
                 } else {
                     Task::none()
                 }
@@ -1258,25 +1238,23 @@ impl JobHunter {
             Message::DeleteJobPost(id) => {
                 // let _ = JobPost::delete(&self.db, id);
                 // println!("id: {}", id);
-                let job_posts = {
+                {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        JobPost::delete(id as i64, &pool)
+                        let res = JobPost::delete(id as i64, &pool)
                             .await
                             .expect("Failed to delete job post");
-                        let jobs_res = JobPost::fetch_all(&pool).await;
-                        _ = sender.send(jobs_res);
+                        // let jobs_res = JobPost::fetch_all(&pool).await;
+                        _ = sender.send(res);
                     });
-                    receiver
-                        .recv()
-                        .expect("Failed to receive jobs_res")
-                        .expect("Failed to get job posts")
-                };
+                    receiver.recv().expect("Failed to receive jobs_res")
+                }
                 // self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
-                self.job_posts = job_posts;
+                // self.job_posts.retain(|job_post| job_post.id != id);
                 // self.filter_results();
-                Task::none()
+                // Task::none()
+                self.get_filter_task()
             }
             Message::ToggleJobDropdown(id) => {
                 // println!("id: {}", id);
@@ -1325,21 +1303,25 @@ impl JobHunter {
                 post.benefits = Some(self.benefits.clone());
                 post.skills = Some(self.skills.clone());
                 // let _ = JobPost::update(&self.db, post).expect("Failed to update job post");
-                let job_posts = {
+                // let job_posts = {
+                let updated = {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        let _ = post.update(&pool).await.expect("Failed to update job post");
-                        let jobs_res = JobPost::fetch_all(&pool).await;
-                        _ = sender.send(jobs_res);
+                        let res = post.update(&pool).await;
+                        // let jobs_res = JobPost::fetch_all(&pool).await;
+                        _ = sender.send(res);
                     });
                     receiver
                         .recv()
-                        .expect("Failed to receive jobs_res")
-                        .expect("Failed to get job posts")
+                        .expect("Failed to receive res")
+                        .expect("Failed to update job post")
                 };
                 // self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
-                self.job_posts = job_posts;
+                // self.job_posts = job_posts;
+                if let Some(job_post) = self.job_posts.iter_mut().find(|x| x.id == updated.id) {
+                    *job_post = updated;
+                }
                 // self.filter_results();
                 self.hide_modal();
                 Task::none()
@@ -1381,13 +1363,14 @@ impl JobHunter {
                     apijobs_id: None,
                 };
                 // let _ = JobPost::create(&self.db, post).expect("Failed to create job post");
-                let job_posts = {
+                // let job_posts = {
+                {
                     let pool = self.db.clone();
                     let (sender, receiver) = std::sync::mpsc::channel();
                     self.tokio_handle.spawn(async move {
-                        post.insert(&pool).await.expect("Failed to create job post");
-                        let jobs_res = JobPost::fetch_all(&pool).await;
-                        _ = sender.send(jobs_res);
+                        let res = post.insert(&pool).await;
+                        // let jobs_res = JobPost::fetch_all(page, page_size, &pool).await;
+                        _ = sender.send(res);
                     });
                     receiver
                         .recv()
@@ -1395,14 +1378,22 @@ impl JobHunter {
                         .expect("Failed to get job posts")
                 };
                 // self.job_posts = JobPost::get_all(&self.db).expect("Failed to get job posts");
-                self.job_posts = job_posts;
+                // self.job_posts = job_posts;
                 // self.filter_results();
                 self.hide_modal();
-                Task::none()
+                self.get_filter_task()
             }
             // https://github.com/iced-rs/iced_aw/issues/300#issuecomment-2563377964
             Message::JobPostScroll(viewport) => {
                 self.job_post_scroll = viewport.absolute_offset().y;
+                Task::none()
+            }
+            Message::JobPageButtonPressed(page) => {
+                if page > 0 && page <= total_pages(self.job_posts_total as i64, self.job_page_size)
+                {
+                    self.job_page = page;
+                    return self.get_filter_task();
+                }
                 Task::none()
             }
             /* Filter */
@@ -1479,6 +1470,8 @@ impl JobHunter {
             }
             Message::ResultsFiltered(job_posts) => {
                 self.job_posts = job_posts;
+                // self.job_posts_total = self.job_posts.len();
+                self.set_job_count();
                 Task::none()
             }
             Message::FindJobs => Task::perform(
@@ -2004,7 +1997,7 @@ impl JobHunter {
                     .padding(Padding::from([0, 30]).top(20)),
                     // Job list
                     container(
-                        text(format!("{} results", self.job_posts.len()))
+                        text(format!("{} results", self.job_posts_total))
                     )
                     .width(Fill)
                     .padding(Padding::from([0, 30])),
@@ -2227,6 +2220,31 @@ impl JobHunter {
                         .on_scroll(|viewport| {
                             Message::JobPostScroll(viewport)
                         })
+                        .height(Length::FillPortion(1)),
+                    // Pagination
+                    container(
+                        row![
+                            IconButton::new("angles-left").solid().view().map(|msg| match msg {
+                                IconButtonMessage::Pressed => Message::JobPageButtonPressed(1)
+                            }),
+                            IconButton::new("angle-left").solid().view().map(|msg| match msg {
+                                IconButtonMessage::Pressed => Message::JobPageButtonPressed(self.job_page - 1)
+                            }),
+                            text(self.job_page),
+                            IconButton::new("angle-right").solid().view().map(|msg| match msg {
+                                IconButtonMessage::Pressed => Message::JobPageButtonPressed(self.job_page + 1)
+                            }),
+                            IconButton::new("angles-right").solid().view().map(|msg| match msg {
+                                IconButtonMessage::Pressed => Message::JobPageButtonPressed(total_pages(self.job_posts_total as i64, self.job_page_size))
+                            }),
+                        ]
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                    )
+                    .height(Length::Shrink)
+                    .width(Fill)
+                    .align_x(Alignment::Center)
+                    .padding(Padding::from([0, 30]).bottom(20))
                 ]
                 .spacing(15)
             )

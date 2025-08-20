@@ -91,6 +91,11 @@ pub async fn migrate(acquirable: impl sqlx::Acquire<'_, Database = sqlx::sqlite:
         .expect("Failed to run migrations")
 }
 
+pub async fn shutdown(pool: sqlx::SqlitePool) {
+    // closing with an owned pool clone
+    pool.close().await;
+}
+
 /* SqliteDateTime */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

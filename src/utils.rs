@@ -34,3 +34,7 @@ pub fn format_location(city: &str, region: &str, country: &str) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
+
+pub fn total_pages(total_items: i64, page_size: i64) -> i64 {
+    (total_items + page_size - 1) / page_size
+}

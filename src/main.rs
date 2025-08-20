@@ -1,4 +1,5 @@
 mod api;
+mod components;
 mod db;
 mod job_hunter;
 mod utils;
