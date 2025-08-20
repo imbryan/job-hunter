@@ -1,6 +1,7 @@
 mod api;
 mod db;
 mod job_hunter;
+mod utils;
 
 use clap::Parser;
 use serde::{Deserialize, Serialize};

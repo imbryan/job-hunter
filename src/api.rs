@@ -1,7 +1,7 @@
 use crate::db::company::Company;
 use crate::db::job_post::{JobPost, JobPostLocationType};
 use crate::db::{NullableSqliteDateTime, SqliteBoolean, SqliteDateTime};
-use crate::job_hunter::utils::format_location;
+use crate::utils::format_location;
 use chrono::Utc;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Deserialize;
