@@ -2,6 +2,7 @@ mod api;
 mod components;
 mod db;
 mod job_hunter;
+mod scraper;
 mod utils;
 
 use clap::Parser;

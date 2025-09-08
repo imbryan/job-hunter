@@ -18,6 +18,7 @@ use iced_aw::{
 };
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use sqlx::QueryBuilder;
+use thirtyfour::DesiredCapabilities;
 
 // use self::data::{
 //     format_comma_separated, get_iced_date, get_pay_i64, get_pay_str, get_utc, migrate,
@@ -32,6 +33,7 @@ use crate::db::{
     job_post::{JobPost, JobPostLocationType},
     NullableSqliteDateTime, SqliteBoolean, SqliteDateTime,
 };
+use crate::scraper;
 use crate::utils::*;
 use crate::AppConfig;
 
@@ -45,6 +47,10 @@ pub struct JobHunter {
     db: sqlx::SqlitePool,
     // Config
     config: AppConfig,
+    // Webdriver
+    web_driver: Option<thirtyfour::WebDriver>,
+    // Interface
+    awaiting: bool,
     // Company
     companies: Vec<Company>,
     company_dropdowns: BTreeMap<i64, bool>,
@@ -133,6 +139,9 @@ pub enum Message {
     CreateJobPost,
     JobPostScroll(iced::widget::scrollable::Viewport),
     JobPageButtonPressed(i64),
+    FetchJobDetails,
+    JobDetailsFetched(Option<String>, Option<JobPost>),
+    CreateJobPostCompany,
     // Dropdown
     ToggleCompanyDropdown(i64),
     ToggleJobDropdown(i64),
@@ -254,6 +263,14 @@ impl JobHunter {
         //     .block_on(JobPost::fetch_all(&conn.clone()))
         //     .expect("Failed to get jobs");
         let (id, open) = window::open(window::Settings::default());
+        let mut caps = DesiredCapabilities::firefox();
+        caps.set_headless().expect("Failed to set caps");
+        let res = handle
+            .block_on(async { thirtyfour::WebDriver::new("http://127.0.0.1:4444", caps).await });
+        let driver = match res {
+            Ok(driver) => Some(driver),
+            Err(_) => None,
+        };
         (
             Self {
                 tokio_handle: handle,
@@ -312,6 +329,8 @@ impl JobHunter {
                 job_page: 1,
                 job_page_size: 10,
                 job_posts_total: 0,
+                web_driver: driver,
+                awaiting: false,
             },
             open.map(Message::WindowOpened),
         )
@@ -499,6 +518,18 @@ impl JobHunter {
                 .height(Length::Fixed(70.0))
                 .into(),
             };
+        let mut company_row = row![company_element];
+        let create_company_btn: Element<'_, Message, Theme, iced::Renderer> =
+            match self.job_post_company_name.is_empty() {
+                true => iced::widget::Space::new(0, 0).into(),
+                false => {
+                    company_row = company_row.spacing(5);
+                    button(text("Create"))
+                        .on_press(Message::CreateJobPostCompany)
+                        .into()
+                }
+            };
+        company_row = company_row.push(create_company_btn);
         let min_yoe = match self.min_yoe {
             Some(num) => num.to_string(),
             None => "".to_string(),
@@ -548,13 +579,19 @@ impl JobHunter {
         if self.job_post_id.is_some() {
             job_title_field = job_title_field.id(self.primary_modal_field.clone().unwrap());
         }
+        // Fetch button
+        let mut fetch_btn: iced::widget::Button<'_, Message, Theme, iced::Renderer> =
+            button(text("Fetch"));
+        if self.web_driver.is_some() && self.awaiting == false {
+            fetch_btn = fetch_btn.on_press(Message::FetchJobDetails);
+        }
         container(
             column![
                 text(title).size(24),
                 column![
                     row![
                         // Company name
-                        column![text("Company*").size(12), company_element, company_select,]
+                        column![text("Company*").size(12), company_row, company_select,]
                             .width(Length::FillPortion(1))
                             .spacing(5),
                         // Date posted
@@ -576,10 +613,14 @@ impl JobHunter {
                         // URL
                         column![
                             text("Job URL*").size(12),
-                            text_input("", &self.url)
-                                .on_input(Message::JobURLChanged)
-                                .on_submit(submit_message.clone())
-                                .padding(5)
+                            row![
+                                text_input("", &self.url)
+                                    .on_input(Message::JobURLChanged)
+                                    .on_submit(submit_message.clone())
+                                    .padding(5),
+                                fetch_btn,
+                            ]
+                            .spacing(5)
                         ]
                         .width(Length::FillPortion(1))
                         .spacing(5),
@@ -880,6 +921,9 @@ impl JobHunter {
         self.last_modal_field = Some(iced::widget::text_input::Id::unique());
     }
 
+    /********************
+     * fn UPDATE
+     ********************/
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             /* Runtime */
@@ -1399,6 +1443,84 @@ impl JobHunter {
                 }
                 Task::none()
             }
+            Message::FetchJobDetails => {
+                if self.url == "" {
+                    return Task::none();
+                }
+                let job_post_url = self.url.clone();
+                let mut driver = self.web_driver.clone(); // sigh
+                if let Some(driver) = driver.take() {
+                    self.awaiting = true;
+                    return Task::perform(
+                        scraper::fetch_job_details(driver, job_post_url),
+                        |res| {
+                            let res = res.expect("WebDriver failed");
+                            Message::JobDetailsFetched(res.0, res.1)
+                        },
+                    );
+                }
+                Task::none()
+            }
+            Message::JobDetailsFetched(company_name, job) => {
+                self.awaiting = false;
+                if let Some(job) = job {
+                    self.job_title = job.job_title;
+                    self.location = job.location;
+                    self.location_type = Some(job.location_type);
+                    self.location_type_index = JobPostLocationType::ALL
+                        .iter()
+                        .position(|x| x == &job.location_type);
+                    self.min_yoe = job.min_yoe;
+                    self.max_yoe = job.max_yoe;
+                    self.min_pay = get_pay_str(job.min_pay_cents);
+                    self.max_pay = get_pay_str(job.max_pay_cents);
+                    if let Some(skills) = job.skills {
+                        self.skills = skills;
+                    }
+                    if let Some(benefits) = job.benefits {
+                        self.benefits = benefits;
+                    }
+                }
+                if let Some(company_name) = company_name {
+                    return Task::perform(
+                        async { Message::JobPostCompanyNameChanged(company_name) },
+                        |msg| msg,
+                    );
+                }
+                Task::none()
+            }
+            Message::CreateJobPostCompany => {
+                let company_name = self.job_post_company_name.clone();
+                if company_name.is_empty() {
+                    return Task::none();
+                }
+                let companies = {
+                    let pool = self.db.clone();
+                    let (sender, receiver) = std::sync::mpsc::channel();
+                    let company = Company {
+                        id: 0,
+                        name: company_name.clone(),
+                        careers_url: None,
+                        hidden: SqliteBoolean(false),
+                    };
+                    self.tokio_handle.spawn(async move {
+                        Company::insert(&company, &pool)
+                            .await
+                            .expect("Failed to insert company");
+                        let companies_res = Company::fetch_shown(&pool).await;
+                        _ = sender.send(companies_res);
+                    });
+                    receiver
+                        .recv()
+                        .expect("Failed to get companies_res")
+                        .expect("Failed to get companies")
+                };
+                self.companies = companies;
+                Task::perform(
+                    async { Message::JobPostCompanyNameChanged(company_name) },
+                    |msg| msg,
+                )
+            }
             /* Filter */
             Message::FilterMinYOEChanged(num) => {
                 self.filter_min_yoe = num;
@@ -1780,6 +1902,9 @@ impl JobHunter {
         }
     }
 
+    /********************
+     * fn VIEW
+     ********************/
     pub fn view(&self, id: window::Id) -> Element<Message> {
         let mut find_jobs_btn = button(
             row![
@@ -1840,9 +1965,9 @@ impl JobHunter {
                                             button(text("Edit"))
                                                 .on_press(Message::ShowEditCompanyModal(company_id))
                                                 .into(),
-                                            button(text("Solo"))
-                                                .on_press(Message::SoloCompany(company_id))
-                                                .into(),
+                                            // button(text("Solo"))
+                                            //     .on_press(Message::SoloCompany(company_id))
+                                            //     .into(),
                                             button(text("Hide"))
                                                 .on_press(Message::HideCompany(company_id))
                                                 .into(),
@@ -2087,7 +2212,7 @@ impl JobHunter {
                                     let apply_msg: Message;
                                     match application_opt {
                                         Some(app) => {
-                                            apply_text = "Apply";
+                                            apply_text = "Mark as";
                                             apply_msg = Message::ShowEditApplicationModal(app.id);
                                             application = app;
                                         },
@@ -2100,7 +2225,7 @@ impl JobHunter {
                                                 date_responded: Default::default(),
                                                 interviewed: SqliteBoolean(false),
                                             };
-                                            apply_text = "Apply";
+                                            apply_text = "Mark as";
                                             apply_msg = Message::ShowCreateApplicationModal(job_post.id);
                                         },
                                     };
