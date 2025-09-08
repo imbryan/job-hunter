@@ -82,6 +82,9 @@ pub struct JobPost {
     pub pay_unit: Option<String>, // TODO enum
     pub currency: Option<String>,
     pub apijobs_id: Option<String>,
+    pub platform_url: Option<String>,
+    pub notes: Option<String>,
+    pub industry: Option<String>,
 }
 
 impl JobPost {

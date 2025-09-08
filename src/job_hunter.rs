@@ -1361,6 +1361,9 @@ impl JobHunter {
                     pay_unit: Some("year".to_string()), // TODO
                     currency: Some("USD".to_string()),  // TODO
                     apijobs_id: None,
+                    industry: None,     // TODO
+                    notes: None,        // TODO
+                    platform_url: None, // TODO
                 };
                 // let _ = JobPost::create(&self.db, post).expect("Failed to create job post");
                 // let job_posts = {

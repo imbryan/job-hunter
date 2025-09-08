@@ -98,6 +98,9 @@ impl APIJobsJob {
             pay_unit: self.base_salary_unit,
             currency: self.base_salary_currency,
             apijobs_id: Some(self.id),
+            industry: None,     // TODO
+            notes: None,        // TODO
+            platform_url: None, // TODO
         }
     }
 }
