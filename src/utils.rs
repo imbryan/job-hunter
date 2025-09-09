@@ -57,7 +57,7 @@ pub fn parse_salary(salary_str: &str) -> Vec<(f64, String)> {
 }
 
 pub fn find_yoe_naive(text: &str) -> (Option<i64>, Option<i64>) {
-    let re = Regex::new(r"([\d]*)\D([\d]+) year[s]*").expect("Failed to make regex");
+    let re = Regex::new(r"([\d]*)[\D]?([\d]+)[\+]? year[s]?").expect("Failed to make regex");
     let mut min_yoe = i64::MAX;
     let mut max_yoe = i64::MIN;
     for cap in re.captures_iter(text) {
