@@ -76,7 +76,7 @@ pub fn find_yoe_naive(text: &str) -> (Option<i64>, Option<i64>) {
     if min_yoe < i64::MAX {
         results.0 = Some(min_yoe);
     }
-    if max_yoe > i64::MIN {
+    if max_yoe > i64::MIN && max_yoe != min_yoe {
         results.1 = Some(max_yoe);
     }
     results
