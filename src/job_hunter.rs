@@ -937,9 +937,11 @@ impl JobHunter {
         match message {
             /* Runtime */
             Message::Shutdown => {
+                println!("Shutdown");
                 self.geckodriver_process
                     .kill()
                     .expect("Failed to kill geckodriver process");
+                println!("Exiting...");
                 iced::exit()
             }
             /* Window */
