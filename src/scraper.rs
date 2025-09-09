@@ -6,6 +6,13 @@ use crate::db::{
     NullableSqliteDateTime, SqliteDateTime,
 };
 
+#[cfg(target_os = "windows")]
+pub const GECKODRIVER_CMD: &str = "geckodriver";
+#[cfg(not(target_os = "windows"))]
+pub const GECKODRIVER_CMD: &str = "./geckodriver";
+
+pub const GECKODRIVER_PORT: &str = "4444";
+
 pub async fn fetch_job_details(
     driver: thirtyfour::WebDriver,
     url: String,

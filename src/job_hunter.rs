@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::process::Stdio;
 
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use iced::event::Event;
@@ -49,6 +50,7 @@ pub struct JobHunter {
     config: AppConfig,
     // Webdriver
     web_driver: Option<thirtyfour::WebDriver>,
+    geckodriver_process: std::process::Child,
     // Interface
     awaiting: bool,
     // Company
@@ -253,20 +255,26 @@ impl JobHunter {
         handle: tokio::runtime::Handle,
         config: AppConfig,
     ) -> (Self, Task<Message>) {
-        // let mut conn = data::connect(db_path);
-        // migrate(&mut conn);
-
-        // let companies = tokio::runtime::Handle::current()
-        //     .block_on(Company::fetch_all(&conn.clone()))
-        //     .expect("Failed to get companies");
-        // let jobs = tokio::runtime::Handle::current()
-        //     .block_on(JobPost::fetch_all(&conn.clone()))
-        //     .expect("Failed to get jobs");
+        // Open main window
         let (id, open) = window::open(window::Settings::default());
+        // Spawn geckodriver process
+        let geckodriver_port = scraper::GECKODRIVER_PORT;
+        let geckodriver_process: std::process::Child =
+            std::process::Command::new(scraper::GECKODRIVER_CMD)
+                .args(["--port", geckodriver_port])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("Failed to create geckodriver process");
+        handle.block_on(async {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        });
+        // Instantiate WebDriver
         let mut caps = DesiredCapabilities::firefox();
         caps.set_headless().expect("Failed to set caps");
-        let res = handle
-            .block_on(async { thirtyfour::WebDriver::new("http://127.0.0.1:4444", caps).await });
+        let res = handle.block_on(async {
+            thirtyfour::WebDriver::new(format!("http://127.0.0.1:{geckodriver_port}"), caps).await
+        });
         let driver = match res {
             Ok(driver) => Some(driver),
             Err(_) => None,
@@ -331,6 +339,7 @@ impl JobHunter {
                 job_posts_total: 0,
                 web_driver: driver,
                 awaiting: false,
+                geckodriver_process: geckodriver_process,
             },
             open.map(Message::WindowOpened),
         )
@@ -927,7 +936,12 @@ impl JobHunter {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             /* Runtime */
-            Message::Shutdown => iced::exit(),
+            Message::Shutdown => {
+                self.geckodriver_process
+                    .kill()
+                    .expect("Failed to kill geckodriver process");
+                iced::exit()
+            }
             /* Window */
             Message::OpenWindow => {
                 let Some(last_window) = self.windows.keys().last() else {
