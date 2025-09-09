@@ -1484,6 +1484,7 @@ impl JobHunter {
                     self.location_type_index = JobPostLocationType::ALL
                         .iter()
                         .position(|x| x == &job.location_type);
+                    self.job_posted = job.date_posted.into();
                     self.min_yoe = job.min_yoe;
                     self.max_yoe = job.max_yoe;
                     self.min_pay = get_pay_str(job.min_pay_cents);

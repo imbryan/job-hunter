@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Duration, Months, NaiveDate, Utc};
 use sqlx::{
     encode::IsNull,
     error::BoxDynError,
@@ -176,6 +176,35 @@ impl NullableSqliteDateTime {
             .expect("Failed to parse iso string")
             .with_timezone(&Utc);
         Self(Some(dt.date_naive()))
+    }
+
+    pub fn from_relative(s: &str) -> Self {
+        let parts: Vec<&str> = s.split_whitespace().collect();
+        if parts.len() < 3 || parts.last().expect("Failed to get last item in parts") != &"ago" {
+            return Self(None);
+        }
+        let val: i64;
+        if let Ok(num) = parts[0].parse() {
+            val = num;
+        } else {
+            return Self(None);
+        }
+        let unit = parts[1];
+        let now = Utc::now();
+        let result = match unit {
+            "seconds" | "second" => Some(now - Duration::seconds(val)),
+            "minutes" | "minute" => Some(now - Duration::minutes(val)),
+            "hours" | "hour" => Some(now - Duration::hours(val)),
+            "days" | "day" => Some(now - Duration::days(val)),
+            "weeks" | "week" => Some(now - Duration::weeks(val)),
+            "months" | "month" => now.checked_sub_months(Months::new(val as u32)),
+            _ => None,
+        };
+        if let Some(dt) = result {
+            Self(Some(dt.date_naive()))
+        } else {
+            Self(None)
+        }
     }
 }
 
