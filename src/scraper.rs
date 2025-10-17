@@ -7,10 +7,11 @@ use crate::db::{
 };
 use crate::utils::*;
 
-#[cfg(target_os = "windows")]
+// #[cfg(target_os = "windows")]
+// pub const GECKODRIVER_CMD: &str = "geckodriver";
+// #[cfg(not(target_os = "windows"))]
+// pub const GECKODRIVER_CMD: &str = "./geckodriver";
 pub const GECKODRIVER_CMD: &str = "geckodriver";
-#[cfg(not(target_os = "windows"))]
-pub const GECKODRIVER_CMD: &str = "./geckodriver";
 
 pub const GECKODRIVER_PORT: &str = "4444";
 
