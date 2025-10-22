@@ -277,7 +277,10 @@ impl JobHunter {
         });
         let driver = match res {
             Ok(driver) => Some(driver),
-            Err(_) => None,
+            Err(e) => {
+                println!("{}", e);
+                None
+            }
         };
         (
             Self {
